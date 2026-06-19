@@ -239,6 +239,10 @@ def detect_cycles(
 
         amp_price = float(amp_log * prices[-1])
 
+        # Also skip if the rounded integer period already exists
+        if any(c.period == T_int for c in cycles):
+            continue
+
         seen_periods.append(T_raw)
         cycles.append(
             CycleInfo(

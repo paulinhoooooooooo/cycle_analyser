@@ -137,7 +137,17 @@ def analyze_combinations(
       {2: [top3 pairs], 3: [top3 triples]}
     Both ranked by total compounded return on bullish zones.
     """
-    pool = cycles[:12]
+    # Deduplicate pool by integer period (two cycles rounding to the same period
+    # can appear when FFT bins are close — keep the one with higher stability)
+    seen_periods: set = set()
+    pool = []
+    for c in cycles[:15]:
+        if c.period not in seen_periods:
+            pool.append(c)
+            seen_periods.add(c.period)
+        if len(pool) >= 12:
+            break
+
     results: Dict[int, List[CombinationResult]] = {2: [], 3: []}
 
     for size in (2, 3):

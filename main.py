@@ -153,8 +153,8 @@ Exemples :
         """,
     )
     parser.add_argument("ticker", help="Symbole boursier (ex: SPY, ^FCHI, AAPL) ou chemin vers un fichier CSV local")
-    parser.add_argument("--period", default="2y",
-                        help="Période de données (1y 2y 3y 5y max …) [défaut: 2y]")
+    parser.add_argument("--period", default="3y",
+                        help="Période de données (1y 2y 3y 5y max …) [défaut: 3y]")
     parser.add_argument("--interval", default="1d",
                         help="Intervalle de bougie (1d 1wk 1mo) [défaut: 1d]")
     parser.add_argument("--cycles", type=int, default=20,
