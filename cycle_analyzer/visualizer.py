@@ -236,7 +236,7 @@ def plot_combination(
     # ── Shade bullish zones (green) ───────────────────────────────────────
     for zone in combo.zones:
         ax_price.axvspan(zone.start, zone.end, color=GREEN_FILL, alpha=0.22, zorder=1)
-        if abs(zone.return_pct) >= 0.3:
+        if zone.duration >= 3:
             mid = (zone.start + zone.end) / 2
             col = GREEN if zone.return_pct >= 0 else RED
             ax_price.text(mid, y_top, f"{zone.return_pct:+.1f}%",
@@ -246,7 +246,7 @@ def plot_combination(
     # ── Shade bearish zones (red) ─────────────────────────────────────────
     for zone in combo.bearish_zones:
         ax_price.axvspan(zone.start, zone.end, color=RED_FILL, alpha=0.18, zorder=1)
-        if abs(zone.return_pct) >= 0.3:
+        if zone.duration >= 3:
             mid = (zone.start + zone.end) / 2
             col = RED if zone.return_pct <= 0 else GREEN
             ax_price.text(mid, y_bot, f"{zone.return_pct:+.1f}%",
