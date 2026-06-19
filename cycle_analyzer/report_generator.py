@@ -7,10 +7,9 @@ import numpy as np
 import pandas as pd
 
 from .cycle_detector import CycleInfo
-from .combination_analyzer import CombinationResult
+from .combination_analyzer import CombinationResult, get_custom_combination
 from .visualizer import (
     fig_to_base64,
-    plot_cycle_table,
     plot_single_cycle,
     plot_combination,
     plot_power_spectrum,
@@ -82,10 +81,11 @@ def generate_report(
     all_combos = combinations.get(2, []) + combinations.get(3, [])
 
     # ── Build chart images ────────────────────────────────────────────────────
-    img_table = fig_to_base64(plot_cycle_table(cycles))
     img_spectrum = fig_to_base64(plot_power_spectrum(prices, cycles))
 
     top3 = cycles[:3]
+    # Compute single-cycle stats (bullish/bearish totals) for each top 3 cycle
+    top3_combos = [get_custom_combination(prices, [c]) for c in top3]
     imgs_top3 = [fig_to_base64(plot_single_cycle(prices, dates, c, ticker)) for c in top3]
 
     imgs_combos = {id(combo): fig_to_base64(plot_combination(prices, dates, combo, ticker))
@@ -93,8 +93,9 @@ def generate_report(
 
     # ── HTML ──────────────────────────────────────────────────────────────────
     top3_html = ""
-    for c, img in zip(top3, imgs_top3):
+    for c, sc, img in zip(top3, top3_combos, imgs_top3):
         label, bg, fg = _PHASE_BADGE.get(c.phase_state, ("—", "#21262d", "#c9d1d9"))
+        bear_col = "red" if sc.bearish_total_return_pct <= 0 else "green"
         top3_html += f"""
         <div class="card">
           <div class="card-header">
@@ -104,7 +105,8 @@ def generate_report(
             <span class="stat-chip">Amp: {c.amplitude:,.2f}</span>
             <span class="stat-chip">Force: {c.strength:.2f}</span>
             <span class="stat-chip green">Stab: {c.stability:.2f}</span>
-            <span class="stat-chip">R²: {c.r_squared:.3f}</span>
+            <span class="stat-chip green">↑ Haussier: {sc.total_return_pct:+.1f}%</span>
+            <span class="stat-chip {bear_col}">↓ Baissier: {sc.bearish_total_return_pct:+.1f}%</span>
           </div>
           <img src="data:image/png;base64,{img}" class="chart-img" loading="lazy">
         </div>"""
@@ -164,6 +166,7 @@ def generate_report(
   .stat-chip {{ background: #21262d; border: 1px solid #30363d; border-radius: 6px;
                 padding: 2px 8px; font-size: 11.5px; color: var(--text); }}
   .stat-chip.green {{ border-color: #238636; background: #23863620; color: var(--green); }}
+  .stat-chip.red {{ border-color: #da3633; background: #da363320; color: var(--red); }}
   .zone-chip {{ display: inline-block; margin: 2px; padding: 1px 7px;
                 border-radius: 10px; font-size: 11px; font-weight: 600; }}
   .zone-chip.pos {{ background: #23863630; border: 1px solid #238636; color: var(--green); }}
@@ -212,7 +215,6 @@ def generate_report(
 
 <h2>Tableau Complet des Cycles</h2>
 <div class="card">
-  <img src="data:image/png;base64,{img_table}" class="chart-img" loading="lazy" style="margin-bottom:16px;">
   <table>
     <thead>
       <tr>

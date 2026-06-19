@@ -12,7 +12,7 @@ import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 import pandas as pd
 
-from .cycle_detector import CycleInfo, get_oscillator_series
+from .cycle_detector import CycleInfo, get_oscillator_series, get_bullish_mask
 from .combination_analyzer import CombinationResult
 
 # ── Dark theme colours ────────────────────────────────────────────────────────
@@ -146,41 +146,67 @@ def plot_single_cycle(
     N = len(prices)
     x = np.arange(N)
 
-    # Price
     ax_price.plot(x, prices, color="#58a6ff", linewidth=1.2, zorder=2)
 
-    # Oscillator
     osc = get_oscillator_series(prices, cycle.period)
     amp = cycle.amplitude_log
+    bullish = get_bullish_mask(prices, cycle.period)
 
-    # Bullish/Bearish zones from this cycle
-    direction = np.gradient(osc)
-    bullish = direction > 0
+    # Set ylim before annotating so text positions are correct
+    ymax = prices.max() * 1.02
+    ymin = prices.min() * 0.98
+    ax_price.set_ylim(ymin, ymax)
+    y_top = ymin + (ymax - ymin) * 0.985
+    y_bot = ymin + (ymax - ymin) * 0.015
 
-    # Shade zones on price chart
+    bull_compound = 1.0
+    bear_compound = 1.0
+
     i = 0
     while i < N:
         if bullish[i]:
             start = i
             while i < N and bullish[i]:
                 i += 1
-            end = i
-            ax_price.axvspan(start, end, color=GREEN_FILL, alpha=0.12, zorder=1)
-            ax_osc.axvspan(start, end, color=GREEN_FILL, alpha=0.15, zorder=1)
+            zone_end = i
+            last_idx = i - 1
+            ax_price.axvspan(start, zone_end, color=GREEN_FILL, alpha=0.12, zorder=1)
+            ax_osc.axvspan(start, zone_end, color=GREEN_FILL, alpha=0.15, zorder=1)
+            if last_idx > start:
+                ret = (prices[last_idx] - prices[start]) / prices[start] * 100
+                bull_compound *= (1 + ret / 100)
+                if last_idx - start + 1 >= 3:
+                    mid = (start + last_idx) / 2
+                    col = GREEN if ret >= 0 else RED
+                    ax_price.text(mid, y_top, f"{ret:+.1f}%",
+                                  color=col, fontsize=7, ha="center", va="top",
+                                  fontweight="bold", zorder=5)
         else:
             start = i
             while i < N and not bullish[i]:
                 i += 1
-            end = i
-            ax_price.axvspan(start, end, color=RED_FILL, alpha=0.08, zorder=1)
-            ax_osc.axvspan(start, end, color=RED_FILL, alpha=0.10, zorder=1)
+            zone_end = i
+            last_idx = i - 1
+            ax_price.axvspan(start, zone_end, color=RED_FILL, alpha=0.08, zorder=1)
+            ax_osc.axvspan(start, zone_end, color=RED_FILL, alpha=0.10, zorder=1)
+            if last_idx > start:
+                ret = (prices[last_idx] - prices[start]) / prices[start] * 100
+                bear_compound *= (1 + ret / 100)
+                if last_idx - start + 1 >= 3:
+                    mid = (start + last_idx) / 2
+                    col = RED if ret <= 0 else GREEN
+                    ax_price.text(mid, y_bot, f"{ret:+.1f}%",
+                                  color=col, fontsize=7, ha="center", va="bottom",
+                                  fontweight="bold", zorder=5)
+
+    bull_total = (bull_compound - 1) * 100
+    bear_total = (bear_compound - 1) * 100
 
     ax_price.set_title(
         f"{ticker} — Cycle {cycle.period} barres  "
-        f"| Amp: {cycle.amplitude:,.2f}  "
-        f"| Force: {cycle.strength:.2f}  "
+        f"| Amp: {cycle.amplitude:,.2f}  | Force: {cycle.strength:.2f}  "
         f"| Stabilité: {cycle.stability:.2f}  "
-        f"| Phase: {cycle.phase_state.capitalize()}",
+        f"| ↑ Haussier: {bull_total:+.1f}%  | ↓ Baissier: {bear_total:+.1f}%",
         color=TEXT, fontsize=9.5, pad=6, loc="left",
     )
     ax_price.set_ylabel("Prix", fontsize=8.5)
