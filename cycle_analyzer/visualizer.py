@@ -159,8 +159,8 @@ def plot_single_cycle(
     y_top = ymin + (ymax - ymin) * 0.985
     y_bot = ymin + (ymax - ymin) * 0.015
 
-    bull_compound = 1.0
-    bear_compound = 1.0
+    bull_total = 0.0
+    bear_total = 0.0
 
     i = 0
     while i < N:
@@ -174,7 +174,7 @@ def plot_single_cycle(
             ax_osc.axvspan(start, zone_end, color=GREEN_FILL, alpha=0.15, zorder=1)
             if last_idx > start:
                 ret = (prices[last_idx] - prices[start]) / prices[start] * 100
-                bull_compound *= (1 + ret / 100)
+                bull_total += ret
                 if last_idx - start + 1 >= 3:
                     mid = (start + last_idx) / 2
                     col = GREEN if ret >= 0 else RED
@@ -191,16 +191,13 @@ def plot_single_cycle(
             ax_osc.axvspan(start, zone_end, color=RED_FILL, alpha=0.10, zorder=1)
             if last_idx > start:
                 ret = (prices[last_idx] - prices[start]) / prices[start] * 100
-                bear_compound *= (1 + ret / 100)
+                bear_total += ret
                 if last_idx - start + 1 >= 3:
                     mid = (start + last_idx) / 2
                     col = RED if ret <= 0 else GREEN
                     ax_price.text(mid, y_bot, f"{ret:+.1f}%",
                                   color=col, fontsize=7, ha="center", va="bottom",
                                   fontweight="bold", zorder=5)
-
-    bull_total = (bull_compound - 1) * 100
-    bear_total = (bear_compound - 1) * 100
 
     ax_price.set_title(
         f"{ticker} — Cycle {cycle.period} barres  "

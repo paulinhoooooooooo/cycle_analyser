@@ -80,14 +80,8 @@ def _combined_bearish_mask(prices: np.ndarray, cycles: List[CycleInfo]) -> np.nd
 def _zone_stats(zones: List[ZoneResult]) -> Tuple[float, float, float]:
     if not zones:
         return 0.0, 0.0, 0.0
-    compound = 1.0
-    hits = 0
-    for z in zones:
-        r = z.return_pct / 100
-        compound *= 1 + r
-        if r > 0:
-            hits += 1
-    total_return = (compound - 1) * 100
+    total_return = sum(z.return_pct for z in zones)
+    hits = sum(1 for z in zones if z.return_pct > 0)
     hit_rate = hits / len(zones) * 100
     avg_return = float(np.mean([z.return_pct for z in zones]))
     return round(total_return, 2), round(hit_rate, 1), round(avg_return, 2)
