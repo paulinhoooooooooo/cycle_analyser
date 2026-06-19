@@ -329,7 +329,18 @@ Exemples :
         plt.close(fig)
         console.print(f"[green]Graphique sauvegardé : {out_select}[/green]")
 
-    if not args.no_browser:
+        # Ouvrir le graphique de sélection automatiquement
+        if not args.no_browser:
+            try:
+                import subprocess, platform
+                if platform.system() == "Darwin":
+                    subprocess.run(["open", str(out_select)], check=False)
+                else:
+                    webbrowser.open(out_select.resolve().as_uri())
+            except Exception:
+                pass
+
+    if not args.no_browser and not args.select:
         try:
             webbrowser.open(report_path.resolve().as_uri())
         except Exception:
