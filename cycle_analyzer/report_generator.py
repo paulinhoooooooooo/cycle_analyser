@@ -175,6 +175,16 @@ def generate_report(
   .chart-img {{ width: 100%; border-radius: 6px; display: block; }}
   .two-col {{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }}
   @media (max-width: 800px) {{ .two-col {{ grid-template-columns: 1fr; }} }}
+  .perf-banner {{ display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+                  background: var(--panel); border: 1px solid var(--border);
+                  border-left: 4px solid {('#3fb950' if total_perf >= 0 else '#f85149')};
+                  border-radius: 10px; padding: 16px 22px; margin-bottom: 20px; }}
+  .perf-banner .main-ret {{ font-size: 36px; font-weight: 800;
+                             color: {('#3fb950' if total_perf >= 0 else '#f85149')}; }}
+  .perf-banner .perf-label {{ font-size: 11px; color: var(--text2); text-transform: uppercase;
+                               letter-spacing: .06em; margin-bottom: 2px; }}
+  .perf-banner .perf-detail {{ font-size: 13px; color: var(--text); }}
+  .perf-banner .sep {{ width: 1px; height: 40px; background: var(--border); }}
 </style>
 </head>
 <body>
@@ -185,14 +195,32 @@ def generate_report(
   Intervalle : {interval} &nbsp;|&nbsp; {n_bars} barres
 </div>
 
+<div class="perf-banner">
+  <div>
+    <div class="perf-label">Rendement Buy &amp; Hold</div>
+    <div class="main-ret">{total_perf:+.1f}%</div>
+  </div>
+  <div class="sep"></div>
+  <div>
+    <div class="perf-label">Prix initial ({dates[0].strftime('%d/%m/%Y')})</div>
+    <div class="perf-detail">{price_first:,.2f}</div>
+  </div>
+  <div class="sep"></div>
+  <div>
+    <div class="perf-label">Prix final ({dates[-1].strftime('%d/%m/%Y')})</div>
+    <div class="perf-detail">{price_last:,.2f}</div>
+  </div>
+  <div class="sep"></div>
+  <div>
+    <div class="perf-label">Gain / Perte par part</div>
+    <div class="perf-detail" style="color:{('#3fb950' if total_perf >= 0 else '#f85149')}">{price_last - price_first:+,.2f}</div>
+  </div>
+</div>
+
 <div class="kpi-row">
   <div class="kpi">
     <div class="kpi-label">Dernier prix</div>
     <div class="kpi-val">{price_last:,.2f}</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Performance période</div>
-    <div class="kpi-val {'green' if total_perf >= 0 else 'red'}">{total_perf:+.1f}%</div>
   </div>
   <div class="kpi">
     <div class="kpi-label">Cycles détectés</div>
