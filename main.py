@@ -172,6 +172,10 @@ Exemples :
     parser.add_argument("--select", default=None,
                         help="Sélectionner des périodes spécifiques séparées par des virgules "
                              "(ex: 63,21,126). Génère un graphique de combinaison directement.")
+    parser.add_argument("--pinescript", default=None,
+                        help="Générer un script TradingView Pine Script v6 pour les cycles donnés "
+                             "(ex: 81,21 ou 81,42,21). Sauvegarde un fichier .pine et affiche "
+                             "les valeurs 'ago' calculées par analyse FFT.")
     args = parser.parse_args()
 
     print_banner()
@@ -277,6 +281,74 @@ Exemples :
                     webbrowser.open(out_select.resolve().as_uri())
             except Exception:
                 pass
+
+        console.print("\n[dim]Analyse terminée.[/dim]")
+        return
+
+    # ── Fast path: --pinescript ───────────────────────────────────────────────
+    if args.pinescript:
+        import math as _math
+        import numpy as np
+        from cycle_analyzer.cycle_detector import _detrend_log, _fit_sine
+        from cycle_analyzer.pinescript_generator import generate_pinescript
+
+        try:
+            pine_periods = [int(p.strip()) for p in args.pinescript.split(",")]
+        except ValueError:
+            console.print("[red]--pinescript : format invalide. Utilisez des entiers séparés par des virgules (ex: 81,21)[/red]")
+            sys.exit(1)
+
+        if not (2 <= len(pine_periods) <= 3):
+            console.print("[red]--pinescript : indiquez 2 ou 3 cycles (ex: 81,21 ou 81,42,21)[/red]")
+            sys.exit(1)
+
+        N = len(prices)
+        detrended_g, _ = _detrend_log(prices)
+
+        console.print()
+        ago_values = []
+        coeff_table = []
+        for sp in pine_periods:
+            A_s, B_s, amp_s = _fit_sine(detrended_g, float(sp))
+            psi = _math.atan2(A_s, B_s)
+            ago = int(round(((N - 1) + psi * float(sp) / (2 * _math.pi)) % float(sp)))
+            ago_values.append(ago)
+            coeff_table.append((sp, A_s, B_s, amp_s, psi, ago))
+
+        # Print computed parameters
+        from rich.table import Table as _Table
+        ptable = _Table(title="Paramètres Pine Script calculés", box=box.ROUNDED, border_style="cyan")
+        ptable.add_column("Cycle (barres)", justify="center", style="bold cyan")
+        ptable.add_column("A (cos)", justify="right")
+        ptable.add_column("B (sin)", justify="right")
+        ptable.add_column("ψ = atan2(A,B)", justify="right")
+        ptable.add_column("ago (calculé)", justify="center", style="bold yellow")
+        for sp, A_s, B_s, amp_s, psi, ago in coeff_table:
+            ptable.add_row(str(sp), f"{A_s:.4f}", f"{B_s:.4f}", f"{_math.degrees(psi):.1f}°", str(ago))
+        console.print(ptable)
+
+        script = generate_pinescript(ticker, pine_periods, ago_values)
+
+        out_pine = Path(f"cycles_{ticker}_{'_'.join(str(p) for p in pine_periods)}.pine")
+        out_pine.write_text(script, encoding="utf-8")
+
+        console.print(f"\n[green]Script Pine sauvegardé : {out_pine.resolve()}[/green]")
+        console.print()
+        console.print(Panel(
+            "[bold cyan]Contenu du script (à coller dans TradingView → Pine Editor → Nouveau) :[/bold cyan]",
+            border_style="cyan", expand=False,
+        ))
+        console.print(script)
+
+        # Copy to clipboard on macOS
+        try:
+            import subprocess as _sp, platform as _plat
+            if _plat.system() == "Darwin":
+                proc = _sp.run(["pbcopy"], input=script.encode("utf-8"), check=False)
+                if proc.returncode == 0:
+                    console.print("[dim]✓ Copié dans le presse-papiers (pbcopy)[/dim]")
+        except Exception:
+            pass
 
         console.print("\n[dim]Analyse terminée.[/dim]")
         return
