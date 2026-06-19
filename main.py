@@ -64,32 +64,33 @@ def print_cycle_table(cycles: list, title: str = "Cycles Détectés") -> None:
     console.print(table)
 
 
-def print_combinations(combinations: list) -> None:
-    table = Table(
-        title="Meilleures Combinaisons de Cycles",
-        box=box.ROUNDED, border_style="dim",
-    )
-    table.add_column("Rang", justify="right", style="dim")
-    table.add_column("Cycles (barres)", style="bold")
-    table.add_column("Rendement total", justify="right")
-    table.add_column("Taux réussite", justify="right")
-    table.add_column("Moy/zone", justify="right")
-    table.add_column("Nb zones", justify="right")
+def print_combinations(combinations: dict) -> None:
+    for size, label in [(2, "Top 3 — Combinaisons de 2 cycles"), (3, "Top 3 — Combinaisons de 3 cycles")]:
+        combo_list = combinations.get(size, [])
+        if not combo_list:
+            continue
+        table = Table(title=label, box=box.ROUNDED, border_style="dim")
+        table.add_column("Rang", justify="right", style="dim")
+        table.add_column("Cycles (barres)", style="bold")
+        table.add_column("Haussier (total)", justify="right")
+        table.add_column("Réussite", justify="right")
+        table.add_column("Baissier (total)", justify="right")
+        table.add_column("Zones ↑", justify="right")
 
-    for i, combo in enumerate(combinations[:10], 1):
-        color = "green" if combo.total_return_pct >= 0 else "red"
-        ret_str = f"[{color}]{combo.total_return_pct:+.1f}%[/{color}]"
-        hr_col = "green" if combo.hit_rate >= 60 else ("yellow" if combo.hit_rate >= 45 else "red")
-        table.add_row(
-            f"#{i}",
-            combo.label,
-            ret_str,
-            f"[{hr_col}]{combo.hit_rate:.0f}%[/{hr_col}]",
-            f"{combo.avg_return_pct:+.2f}%",
-            str(combo.n_zones),
-        )
-
-    console.print(table)
+        for i, combo in enumerate(combo_list, 1):
+            col_b = "green" if combo.total_return_pct >= 0 else "red"
+            bear_col = "red" if combo.bearish_total_return_pct <= 0 else "green"
+            hr_col = "green" if combo.hit_rate >= 60 else ("yellow" if combo.hit_rate >= 45 else "red")
+            table.add_row(
+                f"#{i}",
+                combo.label,
+                f"[{col_b}]{combo.total_return_pct:+.1f}%[/{col_b}]",
+                f"[{hr_col}]{combo.hit_rate:.0f}%[/{hr_col}]",
+                f"[{bear_col}]{combo.bearish_total_return_pct:+.1f}%[/{bear_col}]",
+                str(combo.n_zones),
+            )
+        console.print(table)
+        console.print()
 
 
 def interactive_mode(prices, dates, cycles, ticker, output_dir: Path) -> None:
@@ -234,8 +235,9 @@ Exemples :
 
         # ── Analyze combinations ──────────────────────────────────────────────
         t3 = progress.add_task("Analyse des combinaisons de cycles…", total=None)
-        combinations = analyze_combinations(prices, cycles, max_cycles_in_combo=4, top_n=10)
-        progress.update(t3, description=f"[green]✓[/green] {len(combinations)} combinaisons évaluées")
+        combinations = analyze_combinations(prices, cycles, top_n_per_size=3)
+        n_found = sum(len(v) for v in combinations.values())
+        progress.update(t3, description=f"[green]✓[/green] {n_found} meilleures combinaisons trouvées")
         progress.stop_task(t3)
 
         # ── Generate report ───────────────────────────────────────────────────

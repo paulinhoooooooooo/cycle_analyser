@@ -226,61 +226,47 @@ def plot_combination(
 
     ax_price.plot(x, prices, color="#c9d1d9", linewidth=1.0, zorder=2, alpha=0.9)
 
-    # Shade combined bullish zones (green) and bearish (red)
-    mask = combo.bullish_mask
-    i = 0
-    while i < N:
-        if mask[i]:
-            start = i
-            while i < N and mask[i]:
-                i += 1
-            end = i
-            ax_price.axvspan(start, end, color=GREEN_FILL, alpha=0.22, zorder=1)
-
-            # Annotate return for this zone
-            zone = next((z for z in combo.zones if z.start == start), None)
-            if zone and abs(zone.return_pct) >= 0.5:
-                mid = (start + end) / 2
-                col = GREEN if zone.return_pct >= 0 else RED
-                ax_price.text(
-                    mid, ax_price.get_ylim()[1] if ax_price.get_ylim()[1] != 0 else prices.max(),
-                    f"{zone.return_pct:+.1f}%",
-                    color=col, fontsize=7.5, ha="center", va="top",
-                    fontweight="bold", zorder=4,
-                )
-        else:
-            i += 1
-
-    # Recompute ylim annotations after we know the range
+    # Fix ylim first so annotations are placed correctly
     ymax = prices.max() * 1.02
     ymin = prices.min() * 0.98
     ax_price.set_ylim(ymin, ymax)
+    y_top = ymin + (ymax - ymin) * 0.985
+    y_bot = ymin + (ymax - ymin) * 0.015
 
-    # Re-draw annotations with correct ymax
+    # ── Shade bullish zones (green) ───────────────────────────────────────
     for zone in combo.zones:
-        if abs(zone.return_pct) >= 0.5:
+        ax_price.axvspan(zone.start, zone.end, color=GREEN_FILL, alpha=0.22, zorder=1)
+        if abs(zone.return_pct) >= 0.3:
             mid = (zone.start + zone.end) / 2
             col = GREEN if zone.return_pct >= 0 else RED
-            ax_price.text(
-                mid, ymax * 0.995,
-                f"{zone.return_pct:+.1f}%",
-                color=col, fontsize=7.5, ha="center", va="top",
-                fontweight="bold", zorder=5,
-            )
+            ax_price.text(mid, y_top, f"{zone.return_pct:+.1f}%",
+                          color=col, fontsize=7.5, ha="center", va="top",
+                          fontweight="bold", zorder=5)
+
+    # ── Shade bearish zones (red) ─────────────────────────────────────────
+    for zone in combo.bearish_zones:
+        ax_price.axvspan(zone.start, zone.end, color=RED_FILL, alpha=0.18, zorder=1)
+        if abs(zone.return_pct) >= 0.3:
+            mid = (zone.start + zone.end) / 2
+            col = RED if zone.return_pct <= 0 else GREEN
+            ax_price.text(mid, y_bot, f"{zone.return_pct:+.1f}%",
+                          color=col, fontsize=7.5, ha="center", va="bottom",
+                          fontweight="bold", zorder=5)
 
     periods_str = " + ".join(str(p) for p in combo.periods)
+    bear_str = (f"  |  Baissier: {combo.bearish_total_return_pct:+.1f}% "
+                f"({len(combo.bearish_zones)} zones)") if combo.bearish_zones else ""
     ax_price.set_title(
         f"{ticker} — Cycles {periods_str}  "
-        f"| Rendement total: {combo.total_return_pct:+.1f}%  "
-        f"| Réussite: {combo.hit_rate:.0f}%  "
-        f"| Zones: {combo.n_zones}",
-        color=TEXT, fontsize=9.5, pad=6, loc="left",
+        f"| Haussier: {combo.total_return_pct:+.1f}% · {combo.hit_rate:.0f}% réussite · {combo.n_zones} zones"
+        f"{bear_str}",
+        color=TEXT, fontsize=9, pad=6, loc="left",
     )
     ax_price.set_ylabel("Prix", fontsize=8.5)
     ax_price.grid(True, color=GRID, linewidth=0.5)
     ax_price.tick_params(labelbottom=False)
 
-    # Individual oscillators below
+    # ── Individual oscillators below ──────────────────────────────────────
     for ci, cycle in enumerate(combo.cycles):
         ax = fig.add_subplot(gs[1 + ci], sharex=ax_price)
         ax.set_facecolor(PANEL)
@@ -304,7 +290,10 @@ def plot_combination(
         else:
             _set_date_ticks(ax, dates, N)
 
-    fig.tight_layout()
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fig.tight_layout()
     return fig
 
 

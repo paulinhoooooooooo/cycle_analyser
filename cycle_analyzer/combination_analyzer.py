@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -21,12 +21,18 @@ class ZoneResult:
 class CombinationResult:
     cycles: List[CycleInfo]
     periods: List[int]
+    # Bullish zones (all cycles rising simultaneously)
     zones: List[ZoneResult]
     total_return_pct: float
     hit_rate: float
     avg_return_pct: float
     n_zones: int
     bullish_mask: np.ndarray = field(repr=False)
+    # Bearish zones (all cycles falling simultaneously)
+    bearish_zones: List[ZoneResult] = field(default_factory=list)
+    bearish_total_return_pct: float = 0.0
+    bearish_mask: np.ndarray = field(default_factory=lambda: np.array([], dtype=bool), repr=False)
+    combo_size: int = 2
 
     @property
     def label(self) -> str:
@@ -38,7 +44,7 @@ class CombinationResult:
 
 
 def _compute_zones(prices: np.ndarray, mask: np.ndarray) -> List[ZoneResult]:
-    """Find contiguous bullish zones and their returns."""
+    """Find contiguous True zones in mask and compute their price returns."""
     zones: List[ZoneResult] = []
     N = len(prices)
     i = 0
@@ -50,20 +56,28 @@ def _compute_zones(prices: np.ndarray, mask: np.ndarray) -> List[ZoneResult]:
             end = i - 1
             if end > start:
                 ret = (prices[end] - prices[start]) / prices[start] * 100
-                zones.append(ZoneResult(start=start, end=end, return_pct=round(ret, 2), duration=end - start + 1))
+                zones.append(ZoneResult(start=start, end=end,
+                                        return_pct=round(ret, 2), duration=end - start + 1))
         else:
             i += 1
     return zones
 
 
-def _combined_mask(prices: np.ndarray, cycles: List[CycleInfo]) -> np.ndarray:
+def _combined_bullish_mask(prices: np.ndarray, cycles: List[CycleInfo]) -> np.ndarray:
     mask = np.ones(len(prices), dtype=bool)
     for c in cycles:
         mask &= get_bullish_mask(prices, c.period)
     return mask
 
 
-def _zone_stats(prices: np.ndarray, zones: List[ZoneResult]) -> Tuple[float, float, float]:
+def _combined_bearish_mask(prices: np.ndarray, cycles: List[CycleInfo]) -> np.ndarray:
+    mask = np.ones(len(prices), dtype=bool)
+    for c in cycles:
+        mask &= ~get_bullish_mask(prices, c.period)
+    return mask
+
+
+def _zone_stats(zones: List[ZoneResult]) -> Tuple[float, float, float]:
     if not zones:
         return 0.0, 0.0, 0.0
     compound = 1.0
@@ -79,64 +93,88 @@ def _zone_stats(prices: np.ndarray, zones: List[ZoneResult]) -> Tuple[float, flo
     return round(total_return, 2), round(hit_rate, 1), round(avg_return, 2)
 
 
+def _build_combo(prices: np.ndarray, combo: List[CycleInfo]) -> CombinationResult:
+    bull_mask = _combined_bullish_mask(prices, combo)
+    bear_mask = _combined_bearish_mask(prices, combo)
+
+    # Skip degenerate combos
+    bull_pct = bull_mask.mean()
+    if bull_pct < 0.05 or bull_pct > 0.95:
+        return None
+
+    bull_zones = _compute_zones(prices, bull_mask)
+    bear_zones = _compute_zones(prices, bear_mask)
+
+    if not bull_zones:
+        return None
+
+    total_ret, hit_rate, avg_ret = _zone_stats(bull_zones)
+    bear_total, _, _ = _zone_stats(bear_zones)
+
+    return CombinationResult(
+        cycles=combo,
+        periods=[c.period for c in combo],
+        zones=bull_zones,
+        total_return_pct=total_ret,
+        hit_rate=hit_rate,
+        avg_return_pct=avg_ret,
+        n_zones=len(bull_zones),
+        bullish_mask=bull_mask,
+        bearish_zones=bear_zones,
+        bearish_total_return_pct=bear_total,
+        bearish_mask=bear_mask,
+        combo_size=len(combo),
+    )
+
+
 def analyze_combinations(
     prices: np.ndarray,
     cycles: List[CycleInfo],
-    max_cycles_in_combo: int = 4,
-    top_n: int = 10,
-) -> List[CombinationResult]:
+    top_n_per_size: int = 3,
+) -> Dict[int, List[CombinationResult]]:
     """
-    Evaluate all combinations of 2..max_cycles_in_combo from the provided cycles.
-    Returns the top_n combinations ranked by total compounded return.
+    Returns the top combinations grouped by size:
+      {2: [top3 pairs], 3: [top3 triples]}
+    Both ranked by total compounded return on bullish zones.
     """
-    results: List[CombinationResult] = []
-    pool = cycles[:12]  # limit pool for speed
+    pool = cycles[:12]
+    results: Dict[int, List[CombinationResult]] = {2: [], 3: []}
 
-    for size in range(2, min(max_cycles_in_combo + 1, len(pool) + 1)):
+    for size in (2, 3):
+        size_results = []
         for combo in itertools.combinations(pool, size):
-            combo = list(combo)
-            mask = _combined_mask(prices, combo)
+            cr = _build_combo(prices, list(combo))
+            if cr is not None:
+                size_results.append(cr)
+        size_results.sort(key=lambda r: r.total_return_pct, reverse=True)
+        results[size] = size_results[:top_n_per_size]
 
-            # Skip if too few bullish bars or too many (degenerate)
-            bullish_pct = mask.mean()
-            if bullish_pct < 0.05 or bullish_pct > 0.95:
-                continue
-
-            zones = _compute_zones(prices, mask)
-            if not zones:
-                continue
-
-            total_ret, hit_rate, avg_ret = _zone_stats(prices, zones)
-
-            results.append(
-                CombinationResult(
-                    cycles=combo,
-                    periods=[c.period for c in combo],
-                    zones=zones,
-                    total_return_pct=total_ret,
-                    hit_rate=hit_rate,
-                    avg_return_pct=avg_ret,
-                    n_zones=len(zones),
-                    bullish_mask=mask,
-                )
-            )
-
-    results.sort(key=lambda r: r.total_return_pct, reverse=True)
-    return results[:top_n]
+    return results
 
 
 def get_custom_combination(prices: np.ndarray, selected_cycles: List[CycleInfo]) -> CombinationResult:
     """Build a combination result for a user-selected set of cycles."""
-    mask = _combined_mask(prices, selected_cycles)
-    zones = _compute_zones(prices, mask)
-    total_ret, hit_rate, avg_ret = _zone_stats(prices, zones)
-    return CombinationResult(
-        cycles=selected_cycles,
-        periods=[c.period for c in selected_cycles],
-        zones=zones,
-        total_return_pct=total_ret,
-        hit_rate=hit_rate,
-        avg_return_pct=avg_ret,
-        n_zones=len(zones),
-        bullish_mask=mask,
-    )
+    cr = _build_combo(prices, selected_cycles)
+    if cr is None:
+        # Fallback with no filter
+        bull_mask = _combined_bullish_mask(prices, selected_cycles)
+        bear_mask = _combined_bearish_mask(prices, selected_cycles)
+        bull_zones = _compute_zones(prices, bull_mask)
+        bear_zones = _compute_zones(prices, bear_mask)
+        total_ret, hit_rate, avg_ret = _zone_stats(bull_zones)
+        bear_total, _, _ = _zone_stats(bear_zones)
+        return CombinationResult(
+            cycles=selected_cycles,
+            periods=[c.period for c in selected_cycles],
+            zones=bull_zones,
+            total_return_pct=total_ret,
+            hit_rate=hit_rate,
+            avg_return_pct=avg_ret,
+            n_zones=len(bull_zones),
+            bullish_mask=bull_mask,
+            bearish_zones=bear_zones,
+            bearish_total_return_pct=bear_total,
+            bearish_mask=bear_mask,
+            combo_size=len(selected_cycles),
+        )
+    return cr

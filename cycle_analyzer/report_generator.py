@@ -68,7 +68,7 @@ def generate_report(
     prices: np.ndarray,
     dates: pd.DatetimeIndex,
     cycles: List[CycleInfo],
-    combinations: List[CombinationResult],
+    combinations: dict,          # {2: [CombinationResult...], 3: [CombinationResult...]}
     period: str,
     interval: str,
 ) -> str:
@@ -78,6 +78,9 @@ def generate_report(
     price_first = prices[0]
     total_perf = (price_last - price_first) / price_first * 100
 
+    # Flatten for chart generation
+    all_combos = combinations.get(2, []) + combinations.get(3, [])
+
     # ── Build chart images ────────────────────────────────────────────────────
     img_table = fig_to_base64(plot_cycle_table(cycles))
     img_spectrum = fig_to_base64(plot_power_spectrum(prices, cycles))
@@ -85,9 +88,8 @@ def generate_report(
     top3 = cycles[:3]
     imgs_top3 = [fig_to_base64(plot_single_cycle(prices, dates, c, ticker)) for c in top3]
 
-    imgs_combos = []
-    for combo in combinations[:5]:
-        imgs_combos.append(fig_to_base64(plot_combination(prices, dates, combo, ticker)))
+    imgs_combos = {id(combo): fig_to_base64(plot_combination(prices, dates, combo, ticker))
+                   for combo in all_combos}
 
     # ── HTML ──────────────────────────────────────────────────────────────────
     top3_html = ""
@@ -107,9 +109,15 @@ def generate_report(
           <img src="data:image/png;base64,{img}" class="chart-img" loading="lazy">
         </div>"""
 
-    combos_html = ""
-    for rank, (combo, img) in enumerate(zip(combinations[:5], imgs_combos), 1):
-        combos_html += _combo_card_html(combo, img, rank)
+    def _section_html(combo_list: List[CombinationResult], title: str) -> str:
+        html_out = f'<h2>{title}</h2>'
+        for rank, combo in enumerate(combo_list, 1):
+            img = imgs_combos.get(id(combo), "")
+            html_out += _combo_card_html(combo, img, rank)
+        return html_out
+
+    combos_html = _section_html(combinations.get(2, []), "Top 3 — Combinaisons de 2 cycles")
+    combos_html += _section_html(combinations.get(3, []), "Top 3 — Combinaisons de 3 cycles")
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)
 
@@ -221,10 +229,9 @@ def generate_report(
 <h2>Top 3 Cycles les Plus Puissants</h2>
 {top3_html}
 
-<h2>Meilleures Combinaisons de Cycles</h2>
 <p style="color:var(--text2);margin-bottom:14px;font-size:12px;">
-  Les zones vertes indiquent les périodes où tous les cycles sélectionnés sont simultanément haussiers.
-  Le rendement affiché correspond à une position prise au premier jour de la zone jusqu'au dernier jour.
+  <span style="color:#3fb950">■</span> Zones vertes : tous les cycles simultanément haussiers (rendement affiché en haut).
+  &nbsp;<span style="color:#f85149">■</span> Zones rouges : tous les cycles simultanément baissiers (rendement affiché en bas).
 </p>
 {combos_html}
 
