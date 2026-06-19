@@ -159,8 +159,10 @@ def plot_single_cycle(
     y_top = ymin + (ymax - ymin) * 0.985
     y_bot = ymin + (ymax - ymin) * 0.015
 
-    bull_total = 0.0
-    bear_total = 0.0
+    bull_simple = 0.0
+    bear_simple = 0.0
+    bull_cmp = 1.0
+    bear_cmp = 1.0
 
     i = 0
     while i < N:
@@ -174,7 +176,8 @@ def plot_single_cycle(
             ax_osc.axvspan(start, zone_end, color=GREEN_FILL, alpha=0.15, zorder=1)
             if last_idx > start:
                 ret = (prices[last_idx] - prices[start]) / prices[start] * 100
-                bull_total += ret
+                bull_simple += ret
+                bull_cmp *= 1 + ret / 100
                 if last_idx - start + 1 >= 3:
                     mid = (start + last_idx) / 2
                     col = GREEN if ret >= 0 else RED
@@ -191,7 +194,8 @@ def plot_single_cycle(
             ax_osc.axvspan(start, zone_end, color=RED_FILL, alpha=0.10, zorder=1)
             if last_idx > start:
                 ret = (prices[last_idx] - prices[start]) / prices[start] * 100
-                bear_total += ret
+                bear_simple += ret
+                bear_cmp *= 1 + ret / 100
                 if last_idx - start + 1 >= 3:
                     mid = (start + last_idx) / 2
                     col = RED if ret <= 0 else GREEN
@@ -199,12 +203,16 @@ def plot_single_cycle(
                                   color=col, fontsize=7, ha="center", va="bottom",
                                   fontweight="bold", zorder=5)
 
+    bull_compound = (bull_cmp - 1) * 100
+    bear_compound = (bear_cmp - 1) * 100
+
     ax_price.set_title(
         f"{ticker} — Cycle {cycle.period} barres  "
         f"| Amp: {cycle.amplitude:,.2f}  | Force: {cycle.strength:.2f}  "
         f"| Stabilité: {cycle.stability:.2f}  "
-        f"| ↑ Haussier: {bull_total:+.1f}%  | ↓ Baissier: {bear_total:+.1f}%",
-        color=TEXT, fontsize=9.5, pad=6, loc="left",
+        f"| ↑ {bull_simple:+.1f}% (Σ) / {bull_compound:+.1f}% (composé)"
+        f"  | ↓ {bear_simple:+.1f}% (Σ) / {bear_compound:+.1f}% (composé)",
+        color=TEXT, fontsize=9, pad=6, loc="left",
     )
     ax_price.set_ylabel("Prix", fontsize=8.5)
     ax_price.grid(True, color=GRID, linewidth=0.5)
@@ -277,11 +285,14 @@ def plot_combination(
                           fontweight="bold", zorder=5)
 
     periods_str = " + ".join(str(p) for p in combo.periods)
-    bear_str = (f"  |  Baissier: {combo.bearish_total_return_pct:+.1f}% "
-                f"({len(combo.bearish_zones)} zones)") if combo.bearish_zones else ""
+    bear_str = (
+        f"  |  ↓ {combo.bearish_total_return_pct:+.1f}% (Σ) / {combo.bearish_compound_return_pct:+.1f}% (composé)"
+        f" · {len(combo.bearish_zones)} zones"
+    ) if combo.bearish_zones else ""
     ax_price.set_title(
         f"{ticker} — Cycles {periods_str}  "
-        f"| Haussier: {combo.total_return_pct:+.1f}% · {combo.hit_rate:.0f}% réussite · {combo.n_zones} zones"
+        f"| ↑ {combo.total_return_pct:+.1f}% (Σ) / {combo.compound_return_pct:+.1f}% (composé)"
+        f" · {combo.hit_rate:.0f}% réussite · {combo.n_zones} zones"
         f"{bear_str}",
         color=TEXT, fontsize=9, pad=6, loc="left",
     )

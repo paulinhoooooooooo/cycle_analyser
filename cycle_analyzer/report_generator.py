@@ -46,15 +46,21 @@ def _combo_card_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
         for z in combo.zones[:12]
     )
     more = f" +{len(combo.zones)-12} zones" if len(combo.zones) > 12 else ""
+    bull_s = f"{combo.total_return_pct:+.1f}% ↑ total"
+    bull_c = f"{combo.compound_return_pct:+.1f}% ↑ total"
+    bear_col = "red" if combo.bearish_total_return_pct <= 0 else "green"
+    bear_s = f"{combo.bearish_total_return_pct:+.1f}% ↓"
+    bear_c = f"{combo.bearish_compound_return_pct:+.1f}% ↓"
     return f"""
     <div class="card">
       <div class="card-header">
         <span class="rank-badge">#{rank}</span>
         <span class="combo-title">Cycles : {combo.label}</span>
-        <span class="stat-chip green">{combo.total_return_pct:+.1f}% total</span>
+        <span class="stat-chip green ret-val" data-simple="{bull_s}" data-compound="{bull_c}">{bull_s}</span>
         <span class="stat-chip">{combo.hit_rate:.0f}% réussite</span>
         <span class="stat-chip">{combo.n_zones} zones</span>
         <span class="stat-chip">{combo.avg_return_pct:+.2f}% moy/zone</span>
+        <span class="stat-chip {bear_col} ret-val" data-simple="{bear_s}" data-compound="{bear_c}">{bear_s}</span>
       </div>
       <div class="zones-row">{zones_html}{more}</div>
       <img src="data:image/png;base64,{img_b64}" class="chart-img" loading="lazy">
@@ -96,6 +102,10 @@ def generate_report(
     for c, sc, img in zip(top3, top3_combos, imgs_top3):
         label, bg, fg = _PHASE_BADGE.get(c.phase_state, ("—", "#21262d", "#c9d1d9"))
         bear_col = "red" if sc.bearish_total_return_pct <= 0 else "green"
+        bull_s = f"↑ {sc.total_return_pct:+.1f}% haussier"
+        bull_c = f"↑ {sc.compound_return_pct:+.1f}% haussier"
+        bear_s = f"↓ {sc.bearish_total_return_pct:+.1f}% baissier"
+        bear_c = f"↓ {sc.bearish_compound_return_pct:+.1f}% baissier"
         top3_html += f"""
         <div class="card">
           <div class="card-header">
@@ -105,8 +115,8 @@ def generate_report(
             <span class="stat-chip">Amp: {c.amplitude:,.2f}</span>
             <span class="stat-chip">Force: {c.strength:.2f}</span>
             <span class="stat-chip green">Stab: {c.stability:.2f}</span>
-            <span class="stat-chip green">↑ Haussier: {sc.total_return_pct:+.1f}%</span>
-            <span class="stat-chip {bear_col}">↓ Baissier: {sc.bearish_total_return_pct:+.1f}%</span>
+            <span class="stat-chip green ret-val" data-simple="{bull_s}" data-compound="{bull_c}">{bull_s}</span>
+            <span class="stat-chip {bear_col} ret-val" data-simple="{bear_s}" data-compound="{bear_c}">{bear_s}</span>
           </div>
           <img src="data:image/png;base64,{img}" class="chart-img" loading="lazy">
         </div>"""
@@ -175,6 +185,12 @@ def generate_report(
   .chart-img {{ width: 100%; border-radius: 6px; display: block; }}
   .two-col {{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }}
   @media (max-width: 800px) {{ .two-col {{ grid-template-columns: 1fr; }} }}
+  .tab-bar {{ display: flex; gap: 6px; margin-bottom: 20px; }}
+  .tab-btn {{ background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+              padding: 6px 16px; font-size: 12px; color: var(--text2); cursor: pointer; }}
+  .tab-btn:hover {{ border-color: var(--blue); color: var(--blue); }}
+  .tab-btn.active {{ background: #1f3249; border-color: var(--blue); color: var(--blue);
+                     font-weight: 600; }}
   .perf-banner {{ display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
                   background: var(--panel); border: 1px solid var(--border);
                   border-left: 4px solid {('#3fb950' if total_perf >= 0 else '#f85149')};
@@ -188,6 +204,20 @@ def generate_report(
 </style>
 </head>
 <body>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('simple',this)">Somme des zones (simple)</button>
+  <button class="tab-btn" onclick="switchTab('compound',this)">Rendement composé (réinvestissement)</button>
+</div>
+<script>
+function switchTab(mode, btn) {{
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.ret-val').forEach(el => {{
+    el.textContent = el.dataset[mode];
+  }});
+}}
+</script>
 
 <h1>Analyse des Cycles — {ticker_info.get('name', ticker)} ({ticker.upper()})</h1>
 <div class="meta">

@@ -23,7 +23,8 @@ class CombinationResult:
     periods: List[int]
     # Bullish zones (all cycles rising simultaneously)
     zones: List[ZoneResult]
-    total_return_pct: float
+    total_return_pct: float        # simple sum
+    compound_return_pct: float     # compounded (reinvestment)
     hit_rate: float
     avg_return_pct: float
     n_zones: int
@@ -31,6 +32,7 @@ class CombinationResult:
     # Bearish zones (all cycles falling simultaneously)
     bearish_zones: List[ZoneResult] = field(default_factory=list)
     bearish_total_return_pct: float = 0.0
+    bearish_compound_return_pct: float = 0.0
     bearish_mask: np.ndarray = field(default_factory=lambda: np.array([], dtype=bool), repr=False)
     combo_size: int = 2
 
@@ -77,6 +79,15 @@ def _combined_bearish_mask(prices: np.ndarray, cycles: List[CycleInfo]) -> np.nd
     return mask
 
 
+def _compound_return(zones: List[ZoneResult]) -> float:
+    if not zones:
+        return 0.0
+    c = 1.0
+    for z in zones:
+        c *= 1 + z.return_pct / 100
+    return round((c - 1) * 100, 2)
+
+
 def _zone_stats(zones: List[ZoneResult]) -> Tuple[float, float, float]:
     if not zones:
         return 0.0, 0.0, 0.0
@@ -110,12 +121,14 @@ def _build_combo(prices: np.ndarray, combo: List[CycleInfo]) -> CombinationResul
         periods=[c.period for c in combo],
         zones=bull_zones,
         total_return_pct=total_ret,
+        compound_return_pct=_compound_return(bull_zones),
         hit_rate=hit_rate,
         avg_return_pct=avg_ret,
         n_zones=len(bull_zones),
         bullish_mask=bull_mask,
         bearish_zones=bear_zones,
         bearish_total_return_pct=bear_total,
+        bearish_compound_return_pct=_compound_return(bear_zones),
         bearish_mask=bear_mask,
         combo_size=len(combo),
     )
@@ -172,12 +185,14 @@ def get_custom_combination(prices: np.ndarray, selected_cycles: List[CycleInfo])
             periods=[c.period for c in selected_cycles],
             zones=bull_zones,
             total_return_pct=total_ret,
+            compound_return_pct=_compound_return(bull_zones),
             hit_rate=hit_rate,
             avg_return_pct=avg_ret,
             n_zones=len(bull_zones),
             bullish_mask=bull_mask,
             bearish_zones=bear_zones,
             bearish_total_return_pct=bear_total,
+            bearish_compound_return_pct=_compound_return(bear_zones),
             bearish_mask=bear_mask,
             combo_size=len(selected_cycles),
         )
