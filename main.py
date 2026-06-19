@@ -189,9 +189,8 @@ Exemples :
 
     ticker = args.ticker.upper()
 
+    # ── Fetch data (always needed) ────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
-
-        # ── Fetch data ────────────────────────────────────────────────────────
         from pathlib import Path as _Path
         is_csv = _Path(args.ticker).exists() and args.ticker.lower().endswith((".csv", ".txt"))
 
@@ -201,7 +200,6 @@ Exemples :
                 from cycle_analyzer.data_fetcher import load_from_csv
                 data = load_from_csv(args.ticker)
                 ticker = _Path(args.ticker).stem.upper()
-                ticker_info = {"name": ticker, "currency": "", "exchange": "", "type": ""}
             except ValueError as e:
                 progress.stop()
                 console.print(f"[red]Erreur : {e}[/red]")
@@ -210,19 +208,84 @@ Exemples :
             t1 = progress.add_task(f"Téléchargement des données pour {ticker}…", total=None)
             try:
                 data = fetch_data(ticker, period=args.period, interval=args.interval)
-                ticker_info = get_ticker_info(ticker)
             except ValueError as e:
                 progress.stop()
                 console.print(f"[red]Erreur : {e}[/red]")
                 sys.exit(1)
 
         progress.update(t1, description=f"[green]✓[/green] {len(data)} barres chargées")
-        progress.stop_task(t1)
 
-        prices = get_close_prices(data)
-        dates = get_dates(data)
+    prices = get_close_prices(data)
+    dates = get_dates(data)
 
-        # ── Detect cycles ─────────────────────────────────────────────────────
+    # ── Fast path: --select bypasses full analysis ────────────────────────────
+    if args.select:
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import warnings
+        from cycle_analyzer.cycle_detector import CycleInfo, _detrend_log, _fit_sine, _phase_state
+        from cycle_analyzer.combination_analyzer import get_custom_combination
+        from cycle_analyzer.visualizer import plot_combination
+
+        try:
+            sel_periods = [int(p.strip()) for p in args.select.split(",")]
+        except ValueError:
+            console.print("[red]--select : format invalide. Utilisez des entiers séparés par des virgules (ex: 63,21,126)[/red]")
+            sys.exit(1)
+
+        detrended_g, trend_g = _detrend_log(prices)
+
+        sel_cycles = []
+        for sp in sel_periods:
+            A_s, B_s, amp_s = _fit_sine(detrended_g, float(sp))
+            state_s, osc_s, dir_s = _phase_state(A_s, B_s, float(sp), len(prices) - 1)
+            t_arr = np.arange(len(prices), dtype=float)
+            osc_arr = np.exp(trend_g) * (
+                1 + A_s * np.cos(2 * np.pi * t_arr / sp)
+                + B_s * np.sin(2 * np.pi * t_arr / sp)
+            )
+            synth = CycleInfo(
+                period=sp, period_exact=float(sp),
+                amplitude=round(amp_s * prices[-1], 2), strength=1.0, stability=0.0,
+                phase_state=state_s, current_value=osc_s, current_direction=dir_s,
+                oscillator=osc_arr,
+                r_squared=0.0, amplitude_log=amp_s, coeff_a=A_s, coeff_b=B_s,
+            )
+            sel_cycles.append(synth)
+
+        combo = get_custom_combination(prices, sel_cycles)
+        console.print(f"\n[bold]Combinaison {combo.label}[/bold]")
+        console.print(
+            f"  Rendement total : [{'green' if combo.total_return_pct >= 0 else 'red'}]{combo.total_return_pct:+.1f}%[/]  "
+            f"| Réussite : {combo.hit_rate:.0f}%  | {combo.n_zones} zones"
+        )
+
+        out_select = Path(f"selection_{'_'.join(str(p) for p in sel_periods)}.png")
+        fig = plot_combination(prices, dates, combo, ticker)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            fig.savefig(out_select, dpi=130, bbox_inches="tight", facecolor="#0d1117")
+        plt.close(fig)
+        console.print(f"[green]Graphique sauvegardé : {out_select.resolve()}[/green]")
+
+        if not args.no_browser:
+            try:
+                import subprocess, platform
+                if platform.system() == "Darwin":
+                    subprocess.run(["open", str(out_select)], check=False)
+                else:
+                    webbrowser.open(out_select.resolve().as_uri())
+            except Exception:
+                pass
+
+        console.print("\n[dim]Analyse terminée.[/dim]")
+        return
+
+    # ── Full analysis pipeline ────────────────────────────────────────────────
+    ticker_info = get_ticker_info(ticker) if not is_csv else {"name": ticker, "currency": "", "exchange": "", "type": ""}
+
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+
         t2 = progress.add_task("Détection des cycles par FFT…", total=None)
         cycles = detect_cycles(
             prices,
@@ -233,14 +296,12 @@ Exemples :
         progress.update(t2, description=f"[green]✓[/green] {len(cycles)} cycles détectés")
         progress.stop_task(t2)
 
-        # ── Analyze combinations ──────────────────────────────────────────────
         t3 = progress.add_task("Analyse des combinaisons de cycles…", total=None)
         combinations = analyze_combinations(prices, cycles, top_n_per_size=3)
         n_found = sum(len(v) for v in combinations.values())
         progress.update(t3, description=f"[green]✓[/green] {n_found} meilleures combinaisons trouvées")
         progress.stop_task(t3)
 
-        # ── Generate report ───────────────────────────────────────────────────
         t4 = progress.add_task("Génération du rapport HTML…", total=None)
         html = generate_report(
             ticker=ticker,
@@ -255,7 +316,6 @@ Exemples :
         progress.update(t4, description="[green]✓[/green] Rapport généré")
         progress.stop_task(t4)
 
-    # ── Save report ───────────────────────────────────────────────────────────
     if args.output:
         report_path = Path(args.output)
     else:
@@ -263,7 +323,6 @@ Exemples :
 
     report_path.write_text(html, encoding="utf-8")
 
-    # ── Print results to terminal ─────────────────────────────────────────────
     console.print()
     print_cycle_table(cycles)
     console.print()
@@ -278,76 +337,13 @@ Exemples :
         )
     )
 
-    # ── Handle --select option ────────────────────────────────────────────────
-    if args.select:
-        from cycle_analyzer.combination_analyzer import get_custom_combination, CombinationResult
-        from cycle_analyzer.visualizer import plot_combination, fig_to_base64
-        import matplotlib.pyplot as plt
-
-        try:
-            sel_periods = [int(p.strip()) for p in args.select.split(",")]
-        except ValueError:
-            console.print("[red]--select : format invalide. Utilisez des entiers séparés par des virgules (ex: 63,21,126)[/red]")
-            sys.exit(1)
-
-        # Find closest detected cycle for each requested period
-        sel_cycles = []
-        for sp in sel_periods:
-            closest = min(cycles, key=lambda c: abs(c.period - sp))
-            if abs(closest.period - sp) / sp > 0.20:
-                # Period not detected — create a synthetic entry
-                from cycle_analyzer.cycle_detector import CycleInfo, _detrend_log, _fit_sine, _phase_state
-                detrended_s, trend_s = _detrend_log(prices)
-                A_s, B_s, amp_s = _fit_sine(detrended_s, float(sp))
-                state_s, osc_s, dir_s = _phase_state(A_s, B_s, float(sp), len(prices) - 1)
-                import numpy as np
-                synth = CycleInfo(
-                    period=sp, period_exact=float(sp),
-                    amplitude=round(amp_s * prices[-1], 2), strength=1.0, stability=0.0,
-                    phase_state=state_s, current_value=osc_s, current_direction=dir_s,
-                    oscillator=np.exp(trend_s) * (1 + (A_s * np.cos(2*np.pi*np.arange(len(prices))/sp) +
-                                                       B_s * np.sin(2*np.pi*np.arange(len(prices))/sp))),
-                    r_squared=0.0, amplitude_log=amp_s, coeff_a=A_s, coeff_b=B_s,
-                )
-                sel_cycles.append(synth)
-                console.print(f"[yellow]Cycle {sp} non détecté automatiquement — analyse forcée[/yellow]")
-            else:
-                sel_cycles.append(closest)
-
-        combo = get_custom_combination(prices, sel_cycles)
-        console.print(f"\n[bold]Combinaison {combo.label}[/bold]")
-        console.print(
-            f"  Rendement total : [{'green' if combo.total_return_pct >= 0 else 'red'}]{combo.total_return_pct:+.1f}%[/]  "
-            f"| Réussite : {combo.hit_rate:.0f}%  | {combo.n_zones} zones"
-        )
-        out_select = report_path.parent / f"selection_{'_'.join(str(p) for p in sel_periods)}.png"
-        fig = plot_combination(prices, dates, combo, ticker)
-        import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            fig.savefig(out_select, dpi=130, bbox_inches="tight", facecolor="#0d1117")
-        plt.close(fig)
-        console.print(f"[green]Graphique sauvegardé : {out_select}[/green]")
-
-        # Ouvrir le graphique de sélection automatiquement
-        if not args.no_browser:
-            try:
-                import subprocess, platform
-                if platform.system() == "Darwin":
-                    subprocess.run(["open", str(out_select)], check=False)
-                else:
-                    webbrowser.open(out_select.resolve().as_uri())
-            except Exception:
-                pass
-
-    if not args.no_browser and not args.select:
+    if not args.no_browser:
         try:
             webbrowser.open(report_path.resolve().as_uri())
         except Exception:
             pass
 
-    # ── Interactive mode ──────────────────────────────────────────────────────
-    if args.interactive or (sys.stdin.isatty() and not args.no_browser and not args.select):
+    if args.interactive or sys.stdin.isatty():
         try:
             answer = console.input("\n[bold]Voulez-vous sélectionner des cycles manuellement ? (o/N) : [/bold]").strip().lower()
             if answer in ("o", "oui", "y", "yes"):
