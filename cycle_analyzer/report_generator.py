@@ -1,0 +1,239 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import List
+
+import numpy as np
+import pandas as pd
+
+from .cycle_detector import CycleInfo
+from .combination_analyzer import CombinationResult
+from .visualizer import (
+    fig_to_base64,
+    plot_cycle_table,
+    plot_single_cycle,
+    plot_combination,
+    plot_power_spectrum,
+)
+
+_PHASE_BADGE = {
+    "bullish": ("Haussier", "#238636", "#3fb950"),
+    "bearish": ("Baissier", "#da3633", "#f85149"),
+    "peak": ("Sommet", "#9e6a03", "#d29922"),
+    "trough": ("Creux", "#9e6a03", "#d29922"),
+}
+
+
+def _cycle_row_html(c: CycleInfo) -> str:
+    label, bg, fg = _PHASE_BADGE.get(c.phase_state, ("—", "#21262d", "#c9d1d9"))
+    stab_weight = "bold" if c.stability >= 0.5 else "normal"
+    stab_color = "#3fb950" if c.stability >= 0.5 else "#c9d1d9"
+    return f"""
+    <tr>
+      <td>{c.rank}</td>
+      <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{c.period}</span></td>
+      <td>{c.amplitude:,.2f}</td>
+      <td>{c.strength:.2f}</td>
+      <td style="font-weight:{stab_weight};color:{stab_color}">{c.stability:.2f}</td>
+      <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{label}</span></td>
+    </tr>"""
+
+
+def _combo_card_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
+    zones_html = "".join(
+        '<span class="zone-chip {cls}">{ret:+.1f}%</span>'.format(
+            cls="pos" if z.return_pct >= 0 else "neg", ret=z.return_pct
+        )
+        for z in combo.zones[:12]
+    )
+    more = f" +{len(combo.zones)-12} zones" if len(combo.zones) > 12 else ""
+    return f"""
+    <div class="card">
+      <div class="card-header">
+        <span class="rank-badge">#{rank}</span>
+        <span class="combo-title">Cycles : {combo.label}</span>
+        <span class="stat-chip green">{combo.total_return_pct:+.1f}% total</span>
+        <span class="stat-chip">{combo.hit_rate:.0f}% réussite</span>
+        <span class="stat-chip">{combo.n_zones} zones</span>
+        <span class="stat-chip">{combo.avg_return_pct:+.2f}% moy/zone</span>
+      </div>
+      <div class="zones-row">{zones_html}{more}</div>
+      <img src="data:image/png;base64,{img_b64}" class="chart-img" loading="lazy">
+    </div>"""
+
+
+def generate_report(
+    ticker: str,
+    ticker_info: dict,
+    prices: np.ndarray,
+    dates: pd.DatetimeIndex,
+    cycles: List[CycleInfo],
+    combinations: List[CombinationResult],
+    period: str,
+    interval: str,
+) -> str:
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    n_bars = len(prices)
+    price_last = prices[-1]
+    price_first = prices[0]
+    total_perf = (price_last - price_first) / price_first * 100
+
+    # ── Build chart images ────────────────────────────────────────────────────
+    img_table = fig_to_base64(plot_cycle_table(cycles))
+    img_spectrum = fig_to_base64(plot_power_spectrum(prices, cycles))
+
+    top3 = cycles[:3]
+    imgs_top3 = [fig_to_base64(plot_single_cycle(prices, dates, c, ticker)) for c in top3]
+
+    imgs_combos = []
+    for combo in combinations[:5]:
+        imgs_combos.append(fig_to_base64(plot_combination(prices, dates, combo, ticker)))
+
+    # ── HTML ──────────────────────────────────────────────────────────────────
+    top3_html = ""
+    for c, img in zip(top3, imgs_top3):
+        label, bg, fg = _PHASE_BADGE.get(c.phase_state, ("—", "#21262d", "#c9d1d9"))
+        top3_html += f"""
+        <div class="card">
+          <div class="card-header">
+            <span class="rank-badge">#{c.rank}</span>
+            <span class="combo-title">Cycle {c.period} barres</span>
+            <span class="badge" style="background:{bg}33;border:1px solid {fg};color:{fg}">{label}</span>
+            <span class="stat-chip">Amp: {c.amplitude:,.2f}</span>
+            <span class="stat-chip">Force: {c.strength:.2f}</span>
+            <span class="stat-chip green">Stab: {c.stability:.2f}</span>
+            <span class="stat-chip">R²: {c.r_squared:.3f}</span>
+          </div>
+          <img src="data:image/png;base64,{img}" class="chart-img" loading="lazy">
+        </div>"""
+
+    combos_html = ""
+    for rank, (combo, img) in enumerate(zip(combinations[:5], imgs_combos), 1):
+        combos_html += _combo_card_html(combo, img, rank)
+
+    table_rows = "\n".join(_cycle_row_html(c) for c in cycles)
+
+    html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analyse des Cycles — {ticker}</title>
+<style>
+  :root {{
+    --bg: #0d1117; --panel: #161b22; --border: #21262d;
+    --text: #c9d1d9; --text2: #8b949e; --green: #3fb950; --red: #f85149;
+    --orange: #d29922; --blue: #58a6ff; --purple: #bc8cff;
+  }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: var(--bg); color: var(--text); font-family: -apple-system, 'Segoe UI', sans-serif;
+          font-size: 13px; line-height: 1.5; padding: 24px; }}
+  h1 {{ font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 4px; }}
+  h2 {{ font-size: 15px; font-weight: 600; color: var(--text); margin: 28px 0 12px;
+        border-bottom: 1px solid var(--border); padding-bottom: 6px; }}
+  .meta {{ color: var(--text2); font-size: 12px; margin-bottom: 24px; }}
+  .kpi-row {{ display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }}
+  .kpi {{ background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+          padding: 12px 18px; min-width: 120px; }}
+  .kpi-label {{ font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; }}
+  .kpi-val {{ font-size: 20px; font-weight: 700; color: #fff; margin-top: 2px; }}
+  .kpi-val.green {{ color: var(--green); }}
+  .kpi-val.red {{ color: var(--red); }}
+  table {{ width: 100%; border-collapse: collapse; margin-bottom: 8px; }}
+  thead th {{ background: var(--panel); color: var(--text2); font-size: 11px;
+               text-transform: uppercase; letter-spacing: .06em;
+               padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }}
+  tbody tr:hover {{ background: #1c2128; }}
+  tbody td {{ padding: 7px 10px; border-bottom: 1px solid #1c2128; }}
+  .badge {{ display: inline-block; padding: 2px 8px; border-radius: 12px;
+            font-size: 11.5px; font-weight: 600; }}
+  .card {{ background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+           padding: 16px; margin-bottom: 18px; }}
+  .card-header {{ display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }}
+  .rank-badge {{ background: var(--border); border-radius: 4px; padding: 2px 7px;
+                  font-size: 11px; font-weight: 700; color: var(--text2); }}
+  .combo-title {{ font-weight: 700; font-size: 14px; color: #fff; }}
+  .stat-chip {{ background: #21262d; border: 1px solid #30363d; border-radius: 6px;
+                padding: 2px 8px; font-size: 11.5px; color: var(--text); }}
+  .stat-chip.green {{ border-color: #238636; background: #23863620; color: var(--green); }}
+  .zone-chip {{ display: inline-block; margin: 2px; padding: 1px 7px;
+                border-radius: 10px; font-size: 11px; font-weight: 600; }}
+  .zone-chip.pos {{ background: #23863630; border: 1px solid #238636; color: var(--green); }}
+  .zone-chip.neg {{ background: #da363330; border: 1px solid #da3633; color: var(--red); }}
+  .zones-row {{ margin-bottom: 10px; line-height: 1.8; }}
+  .chart-img {{ width: 100%; border-radius: 6px; display: block; }}
+  .two-col {{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }}
+  @media (max-width: 800px) {{ .two-col {{ grid-template-columns: 1fr; }} }}
+</style>
+</head>
+<body>
+
+<h1>Analyse des Cycles — {ticker_info.get('name', ticker)} ({ticker.upper()})</h1>
+<div class="meta">
+  Généré le {now} &nbsp;|&nbsp; Période : {period} &nbsp;|&nbsp;
+  Intervalle : {interval} &nbsp;|&nbsp; {n_bars} barres
+</div>
+
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="kpi-label">Dernier prix</div>
+    <div class="kpi-val">{price_last:,.2f}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Performance période</div>
+    <div class="kpi-val {'green' if total_perf >= 0 else 'red'}">{total_perf:+.1f}%</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Cycles détectés</div>
+    <div class="kpi-val">{len(cycles)}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Meilleur cycle</div>
+    <div class="kpi-val">{cycles[0].period if cycles else '—'} barres</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Stabilité max</div>
+    <div class="kpi-val green">{cycles[0].stability if cycles else 0:.2f}</div>
+  </div>
+</div>
+
+<h2>Spectre de Puissance</h2>
+<div class="card">
+  <img src="data:image/png;base64,{img_spectrum}" class="chart-img" loading="lazy">
+</div>
+
+<h2>Tableau Complet des Cycles</h2>
+<div class="card">
+  <img src="data:image/png;base64,{img_table}" class="chart-img" loading="lazy" style="margin-bottom:16px;">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Longueur (barres)</th><th>Amplitude</th>
+        <th>Force</th><th>Stabilité</th><th>Phase actuelle</th>
+      </tr>
+    </thead>
+    <tbody>
+      {table_rows}
+    </tbody>
+  </table>
+</div>
+
+<h2>Top 3 Cycles les Plus Puissants</h2>
+{top3_html}
+
+<h2>Meilleures Combinaisons de Cycles</h2>
+<p style="color:var(--text2);margin-bottom:14px;font-size:12px;">
+  Les zones vertes indiquent les périodes où tous les cycles sélectionnés sont simultanément haussiers.
+  Le rendement affiché correspond à une position prise au premier jour de la zone jusqu'au dernier jour.
+</p>
+{combos_html}
+
+<hr style="border-color:var(--border);margin:32px 0 16px;">
+<p style="color:var(--text2);font-size:11px;">
+  Méthode : Décomposition par FFT sur log-prix désaisonnalisés + ajustement sinusoïdal par MCO.
+  La stabilité est mesurée sur fenêtres glissantes. Ce document est à usage analytique uniquement.
+</p>
+</body>
+</html>"""
+
+    return html
