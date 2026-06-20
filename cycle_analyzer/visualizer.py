@@ -649,7 +649,7 @@ def plot_sl_simulation(
         Line2D([0], [0], color="#aaaaaa", linestyle="none", marker="",
                label="(chiffre entre parenthèses = rendement sans SL)"),
     ]
-    ax.legend(handles=legend_elems, loc="upper right", fontsize=7,
+    ax.legend(handles=legend_elems, loc="lower left", fontsize=7,
               framealpha=0.75, facecolor=PANEL, edgecolor=GRID)
 
     import warnings
