@@ -76,22 +76,18 @@ def _annotate_future_transitions(
             bars = int(round(float(t_fut[i]))) - (N - 1)
             date_str = _future_date_str(dates, bars)
             y_pos = float(fut_osc[i]) * 0.82
-            ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=7.5,
-                    ha="center", va="bottom", rotation=0, fontweight="bold",
-                    zorder=6, clip_on=False,
-                    bbox=dict(boxstyle="round,pad=0.2", facecolor=PANEL,
-                              edgecolor=color, alpha=0.80, linewidth=0.8))
+            ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=5.5,
+                    ha="center", va="bottom", rotation=0,
+                    zorder=6, clip_on=False, alpha=0.90)
             found_peak = True
 
         if is_trough and not found_trough:
             bars = int(round(float(t_fut[i]))) - (N - 1)
             date_str = _future_date_str(dates, bars)
             y_pos = float(fut_osc[i]) * 0.82
-            ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=7.5,
-                    ha="center", va="top", rotation=0, fontweight="bold",
-                    zorder=6, clip_on=False,
-                    bbox=dict(boxstyle="round,pad=0.2", facecolor=PANEL,
-                              edgecolor=color, alpha=0.80, linewidth=0.8))
+            ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=5.5,
+                    ha="center", va="top", rotation=0,
+                    zorder=6, clip_on=False, alpha=0.90)
             found_trough = True
 
         if found_peak and found_trough:
