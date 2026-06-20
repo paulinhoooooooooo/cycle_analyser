@@ -154,7 +154,8 @@ def _event_line(e: CycleEvent) -> str:
     label = labels.get(e.event_type, e.event_type)
     date_str = e.est_date.strftime("%d/%m/%Y") if e.est_date else "?"
     bar_word = "barre" if e.bars_away == 1 else "barres"
-    return f"{icon} {label} dans <b>{e.bars_away} {bar_word}</b> (~{date_str})"
+    periods_detail = " | ".join(f"{p}j" for p in e.periods_str.replace("b", "").split(" + "))
+    return f"{icon} {label} dans <b>{e.bars_away} {bar_word}</b> (~{date_str}) — cycles : {periods_detail}"
 
 
 def build_report(config: dict) -> str:

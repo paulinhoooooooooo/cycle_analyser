@@ -106,31 +106,34 @@ def check_ticker(
         bull_before, bear_before = _state_at(cycles, t_last + k - 1)
         bull_after, bear_after = _state_at(cycles, t_last + k)
 
+        barre_word = "barre" if k == 1 else "barres"
+        periods_detail = " | ".join(f"{p}j" for p in periods)
+
         if not bull_before and bull_after:
             messages.append(
-                f"🟢 <b>{ticker}</b> — Cycles {periods_str}b\n"
-                f"📈 Alignement <b>HAUSSIER</b> dans <b>{k} barre{'s' if k > 1 else ''}</b>\n"
+                f"🟢 <b>{ticker}</b> — Cycles {periods_str}b ({periods_detail})\n"
+                f"📈 Alignement <b>HAUSSIER</b> dans <b>{k} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
         if bull_before and not bull_after:
             messages.append(
-                f"🔴 <b>{ticker}</b> — Cycles {periods_str}b\n"
-                f"📉 Fin de l'alignement <b>HAUSSIER</b> dans <b>{k} barre{'s' if k > 1 else ''}</b>\n"
+                f"🔴 <b>{ticker}</b> — Cycles {periods_str}b ({periods_detail})\n"
+                f"📉 Fin de l'alignement <b>HAUSSIER</b> dans <b>{k} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
         if not bear_before and bear_after:
             messages.append(
-                f"🔴 <b>{ticker}</b> — Cycles {periods_str}b\n"
-                f"📉 Alignement <b>BAISSIER</b> dans <b>{k} barre{'s' if k > 1 else ''}</b>\n"
+                f"🔴 <b>{ticker}</b> — Cycles {periods_str}b ({periods_detail})\n"
+                f"📉 Alignement <b>BAISSIER</b> dans <b>{k} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
         if bear_before and not bear_after:
             messages.append(
-                f"🟢 <b>{ticker}</b> — Cycles {periods_str}b\n"
-                f"📈 Fin de l'alignement <b>BAISSIER</b> dans <b>{k} barre{'s' if k > 1 else ''}</b>\n"
+                f"🟢 <b>{ticker}</b> — Cycles {periods_str}b ({periods_detail})\n"
+                f"📈 Fin de l'alignement <b>BAISSIER</b> dans <b>{k} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
