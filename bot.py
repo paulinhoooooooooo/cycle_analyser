@@ -31,7 +31,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-MAX_LOOKAHEAD = 60  # barres max pour chercher le prochain événement
+MAX_LOOKAHEAD = 300  # barres max pour chercher le prochain événement (~1 an de trading)
 
 
 class CycleEvent(NamedTuple):
