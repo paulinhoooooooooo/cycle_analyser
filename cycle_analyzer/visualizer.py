@@ -72,7 +72,7 @@ def _annotate_future_transitions(
         is_peak   = rising_prev and not rising_next
         is_trough = not rising_prev and rising_next
 
-        if is_peak and not found_peak:
+        if is_peak and not found_peak and fut_osc[i] > 0.50:
             bars = int(round(float(t_fut[i]))) - (N - 1)
             date_str = _future_date_str(dates, bars)
             y_pos = float(fut_osc[i]) + 0.22  # above the peak
@@ -81,7 +81,7 @@ def _annotate_future_transitions(
                     zorder=6, clip_on=False, alpha=0.90)
             found_peak = True
 
-        if is_trough and not found_trough:
+        if is_trough and not found_trough and fut_osc[i] < -0.50:
             bars = int(round(float(t_fut[i]))) - (N - 1)
             date_str = _future_date_str(dates, bars)
             y_pos = float(fut_osc[i]) - 0.22  # below the trough
