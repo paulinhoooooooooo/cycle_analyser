@@ -103,12 +103,16 @@ def _run_sl_simulation(console, prices, dates, combo, sl_pct: float, ticker: str
 
     sl_results = simulate_sl_zones(prices, combo.zones, sl_pct)
     sl_compound = 1.0
+    sl_simple = 0.0
     n_hits = 0
     for r in sl_results:
         sl_compound *= 1 + r.sl_return_pct / 100
+        sl_simple += r.sl_return_pct
         if r.sl_hit:
             n_hits += 1
     sl_total = round((sl_compound - 1) * 100, 2)
+    sl_simple = round(sl_simple, 2)
+    no_sl_simple = combo.total_return_pct
 
     fig_sl = plot_sl_simulation(prices, dates, combo, sl_results, sl_pct, ticker)
     out_sl = Path(out_filename)
@@ -117,14 +121,18 @@ def _run_sl_simulation(console, prices, dates, combo, sl_pct: float, ticker: str
         fig_sl.savefig(out_sl, dpi=130, bbox_inches="tight", facecolor="#0d1117")
     _plt.close(fig_sl)
 
-    col = "green" if sl_total >= 0 else "red"
-    diff = sl_total - combo.compound_return_pct
-    diff_col = "green" if diff >= 0 else "red"
+    col_c = "green" if sl_total >= 0 else "red"
+    col_s = "green" if sl_simple >= 0 else "red"
+    diff_c = round(sl_total - combo.compound_return_pct, 2)
+    diff_s = round(sl_simple - no_sl_simple, 2)
+    diff_col_c = "green" if diff_c >= 0 else "red"
+    diff_col_s = "green" if diff_s >= 0 else "red"
     console.print(Panel(
         f"[bold cyan]Simulation Stop-Loss {sl_pct}%[/bold cyan]\n"
-        f"  Rendement composé [bold]avec SL[/bold] : [{col}]{sl_total:+.1f}%[/{col}]\n"
-        f"  Rendement composé [bold]sans SL[/bold] : {combo.compound_return_pct:+.1f}%\n"
-        f"  Différence          : [{diff_col}]{diff:+.1f}%[/{diff_col}]\n"
+        f"  Avec SL  — composé : [{col_c}]{sl_total:+.1f}%[/{col_c}]   simple : [{col_s}]{sl_simple:+.1f}%[/{col_s}]\n"
+        f"  Sans SL  — composé : {combo.compound_return_pct:+.1f}%   simple : {no_sl_simple:+.1f}%\n"
+        f"  Différence composé : [{diff_col_c}]{diff_c:+.1f}%[/{diff_col_c}]   "
+        f"simple : [{diff_col_s}]{diff_s:+.1f}%[/{diff_col_s}]\n"
         f"  SL déclenchés      : {n_hits} / {len(sl_results)} zones\n"
         f"  Graphique SL       : {out_sl.resolve()}",
         border_style="cyan", expand=False,
@@ -322,28 +330,28 @@ Exemples :
             f"| Réussite : {combo.hit_rate:.0f}%  | {combo.n_zones} zones"
         )
 
-        out_select = Path(f"selection_{'_'.join(str(p) for p in sel_periods)}.png")
-        fig = plot_combination(prices, dates, combo, ticker)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            fig.savefig(out_select, dpi=130, bbox_inches="tight", facecolor="#0d1117")
-        plt.close(fig)
-        console.print(f"[green]Graphique sauvegardé : {out_select.resolve()}[/green]")
-
         if args.SL is not None:
             _run_sl_simulation(console, prices, dates, combo, args.SL, ticker,
                                f"selection_{'_'.join(str(p) for p in sel_periods)}_SL{args.SL}.png",
                                args.no_browser)
+        else:
+            out_select = Path(f"selection_{'_'.join(str(p) for p in sel_periods)}.png")
+            fig = plot_combination(prices, dates, combo, ticker)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                fig.savefig(out_select, dpi=130, bbox_inches="tight", facecolor="#0d1117")
+            plt.close(fig)
+            console.print(f"[green]Graphique sauvegardé : {out_select.resolve()}[/green]")
 
-        if not args.no_browser:
-            try:
-                import subprocess, platform
-                if platform.system() == "Darwin":
-                    subprocess.run(["open", str(out_select)], check=False)
-                else:
-                    webbrowser.open(out_select.resolve().as_uri())
-            except Exception:
-                pass
+            if not args.no_browser:
+                try:
+                    import subprocess, platform
+                    if platform.system() == "Darwin":
+                        subprocess.run(["open", str(out_select)], check=False)
+                    else:
+                        webbrowser.open(out_select.resolve().as_uri())
+                except Exception:
+                    pass
 
         console.print("\n[dim]Analyse terminée.[/dim]")
         return
@@ -440,52 +448,58 @@ Exemples :
                 coeff_a=A_s, coeff_b=B_s,
             ))
 
-        out_chart = Path(f"cycles_{ticker}_{'_'.join(str(p) for p in pine_periods)}.png")
-        with _warn.catch_warnings():
-            _warn.simplefilter("ignore")
-            if len(synth_cycles) == 1:
-                fig = _plot_single(prices, dates, synth_cycles[0], ticker)
-            else:
-                combo = _gcc(prices, synth_cycles)
-                fig = _plot_combo(prices, dates, combo, ticker)
-            fig.savefig(out_chart, dpi=130, bbox_inches="tight", facecolor="#0d1117")
-        _plt.close(fig)
-
+        _pine_combo = _gcc(prices, synth_cycles)
         _verify_str = "  |  ".join(f"Cycle {p}b ≈ {sv:+.3f}" for p, _, sv in tv_sines)
-        console.print(Panel(
-            f"[bold green]Script Pine sauvegardé :[/bold green] {out_pine.resolve()}\n"
-            f"[bold green]Graphique comparatif  :[/bold green] {out_chart.resolve()}\n\n"
-            "[dim]→ Pine Editor TradingView : ouvrir ce fichier, Ctrl+A, Ctrl+C, coller dans un Nouveau script.[/dim]\n"
-            f"[dim]→ Vérification : au [/dim][bold]dernier bar[/bold][dim], les oscillateurs doivent afficher :[/dim]\n"
-            f"   [bold magenta]{_verify_str}[/bold magenta]",
-            border_style="green", expand=False,
-        ))
 
         if args.SL is not None:
-            _pine_combo = _gcc(prices, synth_cycles)
+            console.print(Panel(
+                f"[bold green]Script Pine sauvegardé :[/bold green] {out_pine.resolve()}\n\n"
+                "[dim]→ Pine Editor TradingView : ouvrir ce fichier, Ctrl+A, Ctrl+C, coller dans un Nouveau script.[/dim]\n"
+                f"[dim]→ Vérification : au [/dim][bold]dernier bar[/bold][dim], les oscillateurs doivent afficher :[/dim]\n"
+                f"   [bold magenta]{_verify_str}[/bold magenta]",
+                border_style="green", expand=False,
+            ))
             _sl_out = Path(f"cycles_{ticker}_{'_'.join(str(p) for p in pine_periods)}_SL{args.SL}.png")
             _run_sl_simulation(console, prices, dates, _pine_combo, args.SL, ticker,
                                str(_sl_out), args.no_browser)
+        else:
+            out_chart = Path(f"cycles_{ticker}_{'_'.join(str(p) for p in pine_periods)}.png")
+            with _warn.catch_warnings():
+                _warn.simplefilter("ignore")
+                if len(synth_cycles) == 1:
+                    fig = _plot_single(prices, dates, synth_cycles[0], ticker)
+                else:
+                    fig = _plot_combo(prices, dates, _pine_combo, ticker)
+                fig.savefig(out_chart, dpi=130, bbox_inches="tight", facecolor="#0d1117")
+            _plt.close(fig)
 
-        # Open file in default editor and copy to clipboard
-        try:
-            import subprocess as _sp, platform as _plat
-            _sys = _plat.system()
-            if _sys == "Windows":
-                _sp.Popen(["notepad.exe", str(out_pine)])
-                console.print("[dim]✓ Fichier ouvert dans le Bloc-notes[/dim]")
-                # Copy to clipboard via PowerShell Set-Clipboard (most reliable on Windows)
-                ps_cmd = f'Set-Clipboard -Value (Get-Content -Path "{out_pine.resolve()}" -Raw)'
-                _sp.run(["powershell", "-Command", ps_cmd], check=False)
-                console.print("[dim]✓ Copié dans le presse-papiers (Ctrl+V pour coller)[/dim]")
-                _sp.Popen(["explorer", str(out_chart.resolve())])
-            elif _sys == "Darwin":
-                _sp.Popen(["open", str(out_pine)])
-                _sp.run(["pbcopy"], input=script.encode("utf-8"), check=False)
-                _sp.Popen(["open", str(out_chart)])
-                console.print("[dim]✓ Fichier ouvert et copié dans le presse-papiers[/dim]")
-        except Exception:
-            pass
+            console.print(Panel(
+                f"[bold green]Script Pine sauvegardé :[/bold green] {out_pine.resolve()}\n"
+                f"[bold green]Graphique comparatif  :[/bold green] {out_chart.resolve()}\n\n"
+                "[dim]→ Pine Editor TradingView : ouvrir ce fichier, Ctrl+A, Ctrl+C, coller dans un Nouveau script.[/dim]\n"
+                f"[dim]→ Vérification : au [/dim][bold]dernier bar[/bold][dim], les oscillateurs doivent afficher :[/dim]\n"
+                f"   [bold magenta]{_verify_str}[/bold magenta]",
+                border_style="green", expand=False,
+            ))
+
+            # Open Pine script and chart
+            try:
+                import subprocess as _sp, platform as _plat
+                _sys = _plat.system()
+                if _sys == "Windows":
+                    _sp.Popen(["notepad.exe", str(out_pine)])
+                    console.print("[dim]✓ Fichier ouvert dans le Bloc-notes[/dim]")
+                    ps_cmd = f'Set-Clipboard -Value (Get-Content -Path "{out_pine.resolve()}" -Raw)'
+                    _sp.run(["powershell", "-Command", ps_cmd], check=False)
+                    console.print("[dim]✓ Copié dans le presse-papiers (Ctrl+V pour coller)[/dim]")
+                    _sp.Popen(["explorer", str(out_chart.resolve())])
+                elif _sys == "Darwin":
+                    _sp.Popen(["open", str(out_pine)])
+                    _sp.run(["pbcopy"], input=script.encode("utf-8"), check=False)
+                    _sp.Popen(["open", str(out_chart)])
+                    console.print("[dim]✓ Fichier ouvert et copié dans le presse-papiers[/dim]")
+            except Exception:
+                pass
 
         console.print("\n[dim]Analyse terminée.[/dim]")
         return

@@ -580,10 +580,13 @@ def plot_sl_simulation(
 
     ymax = prices.max() * 1.02
     ymin = prices.min() * 0.98
+    y_range = ymax - ymin
     ax.set_ylim(ymin, ymax)
-    y_top = ymin + (ymax - ymin) * 0.985
+    y_top = ymin + y_range * 0.985   # primary label (SL return)
+    y_nat = ymin + y_range * 0.62    # secondary label (natural return, SL zones only)
 
     sl_compound = 1.0
+    sl_simple = 0.0
     n_hits = 0
 
     for res in sl_results:
@@ -591,34 +594,45 @@ def plot_sl_simulation(
         zone_col = ORANGE if res.sl_hit else GREEN_FILL
         ax.axvspan(zone.start, res.sl_exit_bar, color=zone_col, alpha=0.22, zorder=1)
 
-        # SL trail as step function
         path_x = np.arange(zone.start, zone.start + len(res.sl_path))
         ax.step(path_x, res.sl_path, where="post",
                 color=ORANGE, linewidth=1.0, linestyle="--", alpha=0.70, zorder=3)
 
-        # Vertical marker at SL exit
         if res.sl_hit:
             ax.axvline(res.sl_exit_bar, color=RED, linewidth=0.9,
                        linestyle=":", alpha=0.65, zorder=4)
             n_hits += 1
 
         sl_compound *= 1 + res.sl_return_pct / 100
+        sl_simple += res.sl_return_pct
 
-        # Return label
         if zone.duration >= 3:
             mid = (zone.start + res.sl_exit_bar) / 2
-            col = ORANGE if res.sl_hit else (GREEN if res.sl_return_pct >= 0 else RED)
-            ax.text(mid, y_top, f"{res.sl_return_pct:+.1f}%",
-                    color=col, fontsize=6.0, ha="center", va="top",
-                    zorder=5, rotation=90)
+            if res.sl_hit:
+                # Primary: actual return with SL (orange)
+                ax.text(mid, y_top, f"{res.sl_return_pct:+.1f}%",
+                        color=ORANGE, fontsize=6.0, ha="center", va="top",
+                        zorder=5, rotation=90)
+                # Secondary: what the zone would have returned without SL
+                nat_col = GREEN if zone.return_pct >= 0 else RED
+                ax.text(mid, y_nat, f"({zone.return_pct:+.1f}%)",
+                        color=nat_col, fontsize=5.5, ha="center", va="top",
+                        zorder=5, rotation=90, alpha=0.80)
+            else:
+                col = GREEN if res.sl_return_pct >= 0 else RED
+                ax.text(mid, y_top, f"{res.sl_return_pct:+.1f}%",
+                        color=col, fontsize=6.0, ha="center", va="top",
+                        zorder=5, rotation=90)
 
     sl_total = (sl_compound - 1) * 100
+    no_sl_simple = combo.total_return_pct
+    no_sl_compound = combo.compound_return_pct
 
     ax.set_title(
-        f"{ticker} — Stop-Loss suiveur {sl_pct}%  "
-        f"| Avec SL: {sl_total:+.1f}% (composé)  "
-        f"| Sans SL: {combo.compound_return_pct:+.1f}% (composé)  "
-        f"| {n_hits} SL déclenchés / {len(sl_results)} zones",
+        f"{ticker} — Stop-Loss suiveur {sl_pct}%"
+        f"  |  Avec SL : {sl_total:+.1f}% composé / {sl_simple:+.1f}% simple"
+        f"  |  Sans SL : {no_sl_compound:+.1f}% composé / {no_sl_simple:+.1f}% simple"
+        f"  |  {n_hits} SL déclenchés / {len(sl_results)} zones",
         color=TEXT, fontsize=9, pad=6, loc="left",
     )
     ax.set_ylabel("Prix", fontsize=8.5)
@@ -627,11 +641,13 @@ def plot_sl_simulation(
 
     legend_elems = [
         mpatches.Patch(facecolor=GREEN_FILL, alpha=0.5, edgecolor=GREEN,
-                       label="Sortie naturelle (fin de zone)"),
+                       label="Sortie naturelle — chiffre = rendement"),
         mpatches.Patch(facecolor=ORANGE, alpha=0.5, edgecolor=ORANGE,
-                       label="SL déclenché"),
+                       label="SL déclenché — chiffre orange = rendement réalisé"),
         Line2D([0], [0], color=ORANGE, linestyle="--", linewidth=1.0,
                label=f"Niveau SL (pas de {sl_pct}%)"),
+        Line2D([0], [0], color="#aaaaaa", linestyle="none", marker="",
+               label="(chiffre entre parenthèses = rendement sans SL)"),
     ]
     ax.legend(handles=legend_elems, loc="upper right", fontsize=7,
               framealpha=0.75, facecolor=PANEL, edgecolor=GRID)
