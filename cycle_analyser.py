@@ -93,6 +93,58 @@ def print_combinations(combinations: dict) -> None:
         console.print()
 
 
+def _run_sl_simulation(console, prices, dates, combo, sl_pct: float, ticker: str,
+                       out_filename: str, no_browser: bool) -> None:
+    """Generate the SL simulation chart and print a summary panel."""
+    import warnings as _w
+    import matplotlib.pyplot as _plt
+    from cycle_analyzer.combination_analyzer import simulate_sl_zones
+    from cycle_analyzer.visualizer import plot_sl_simulation
+
+    sl_results = simulate_sl_zones(prices, combo.zones, sl_pct)
+    sl_compound = 1.0
+    n_hits = 0
+    for r in sl_results:
+        sl_compound *= 1 + r.sl_return_pct / 100
+        if r.sl_hit:
+            n_hits += 1
+    sl_total = round((sl_compound - 1) * 100, 2)
+
+    fig_sl = plot_sl_simulation(prices, dates, combo, sl_results, sl_pct, ticker)
+    out_sl = Path(out_filename)
+    with _w.catch_warnings():
+        _w.simplefilter("ignore")
+        fig_sl.savefig(out_sl, dpi=130, bbox_inches="tight", facecolor="#0d1117")
+    _plt.close(fig_sl)
+
+    col = "green" if sl_total >= 0 else "red"
+    diff = sl_total - combo.compound_return_pct
+    diff_col = "green" if diff >= 0 else "red"
+    console.print(Panel(
+        f"[bold cyan]Simulation Stop-Loss {sl_pct}%[/bold cyan]\n"
+        f"  Rendement composé [bold]avec SL[/bold] : [{col}]{sl_total:+.1f}%[/{col}]\n"
+        f"  Rendement composé [bold]sans SL[/bold] : {combo.compound_return_pct:+.1f}%\n"
+        f"  Différence          : [{diff_col}]{diff:+.1f}%[/{diff_col}]\n"
+        f"  SL déclenchés      : {n_hits} / {len(sl_results)} zones\n"
+        f"  Graphique SL       : {out_sl.resolve()}",
+        border_style="cyan", expand=False,
+    ))
+
+    try:
+        import subprocess as _sp, platform as _plat
+        _sys = _plat.system()
+        if not no_browser:
+            if _sys == "Windows":
+                _sp.Popen(["explorer", str(out_sl.resolve())])
+            elif _sys == "Darwin":
+                _sp.Popen(["open", str(out_sl)])
+            else:
+                import webbrowser as _wb
+                _wb.open(out_sl.resolve().as_uri())
+    except Exception:
+        pass
+
+
 def interactive_mode(prices, dates, cycles, ticker, output_dir: Path) -> None:
     """Let user pick cycles and generate a custom combination chart."""
     from cycle_analyzer.combination_analyzer import get_custom_combination
@@ -176,6 +228,9 @@ Exemples :
                         help="Générer un script TradingView Pine Script v6 pour les cycles donnés "
                              "(ex: 81,21 ou 81,42,21). Sauvegarde un fichier .pine et affiche "
                              "les valeurs 'ago' calculées par analyse FFT.")
+    parser.add_argument("--SL", type=float, default=None, metavar="PCT",
+                        help="Simuler un stop-loss suiveur de X%% sur les zones haussières "
+                             "(ex: --SL 5). Génère un graphique de comparaison avec/sans SL.")
     args = parser.parse_args()
 
     print_banner()
@@ -271,6 +326,11 @@ Exemples :
             fig.savefig(out_select, dpi=130, bbox_inches="tight", facecolor="#0d1117")
         plt.close(fig)
         console.print(f"[green]Graphique sauvegardé : {out_select.resolve()}[/green]")
+
+        if args.SL is not None:
+            _run_sl_simulation(console, prices, dates, combo, args.SL, ticker,
+                               f"selection_{'_'.join(str(p) for p in sel_periods)}_SL{args.SL}.png",
+                               args.no_browser)
 
         if not args.no_browser:
             try:
@@ -397,6 +457,12 @@ Exemples :
             f"   [bold magenta]{_verify_str}[/bold magenta]",
             border_style="green", expand=False,
         ))
+
+        if args.SL is not None:
+            _pine_combo = _gcc(prices, synth_cycles)
+            _sl_out = Path(f"cycles_{ticker}_{'_'.join(str(p) for p in pine_periods)}_SL{args.SL}.png")
+            _run_sl_simulation(console, prices, dates, _pine_combo, args.SL, ticker,
+                               str(_sl_out), args.no_browser)
 
         # Open file in default editor and copy to clipboard
         try:

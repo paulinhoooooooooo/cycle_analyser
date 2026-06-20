@@ -551,6 +551,98 @@ def plot_power_spectrum(prices: np.ndarray, cycles: List[CycleInfo]) -> plt.Figu
     return fig
 
 
+# ── Stop-Loss simulation chart ────────────────────────────────────────────────
+
+def plot_sl_simulation(
+    prices: np.ndarray,
+    dates: pd.DatetimeIndex,
+    combo: "CombinationResult",
+    sl_results: list,
+    sl_pct: float,
+    ticker: str = "",
+) -> plt.Figure:
+    """
+    Second chart: shows what the trailing SL strategy would have produced.
+    - Green zone  = trade exited naturally at zone end
+    - Orange zone = SL was triggered before zone end
+    - Dashed orange step line = SL level moving up with price
+    - Red dotted vertical = exact bar where SL fired
+    """
+    from matplotlib.lines import Line2D
+
+    fig, ax = plt.subplots(figsize=(14, 6), facecolor=BG)
+    ax.set_facecolor(PANEL)
+    fig.patch.set_facecolor(BG)
+
+    N = len(prices)
+    x = np.arange(N)
+    ax.plot(x, prices, color="#c9d1d9", linewidth=1.0, zorder=2, alpha=0.9)
+
+    ymax = prices.max() * 1.02
+    ymin = prices.min() * 0.98
+    ax.set_ylim(ymin, ymax)
+    y_top = ymin + (ymax - ymin) * 0.985
+
+    sl_compound = 1.0
+    n_hits = 0
+
+    for res in sl_results:
+        zone = res.zone
+        zone_col = ORANGE if res.sl_hit else GREEN_FILL
+        ax.axvspan(zone.start, res.sl_exit_bar, color=zone_col, alpha=0.22, zorder=1)
+
+        # SL trail as step function
+        path_x = np.arange(zone.start, zone.start + len(res.sl_path))
+        ax.step(path_x, res.sl_path, where="post",
+                color=ORANGE, linewidth=1.0, linestyle="--", alpha=0.70, zorder=3)
+
+        # Vertical marker at SL exit
+        if res.sl_hit:
+            ax.axvline(res.sl_exit_bar, color=RED, linewidth=0.9,
+                       linestyle=":", alpha=0.65, zorder=4)
+            n_hits += 1
+
+        sl_compound *= 1 + res.sl_return_pct / 100
+
+        # Return label
+        if zone.duration >= 3:
+            mid = (zone.start + res.sl_exit_bar) / 2
+            col = ORANGE if res.sl_hit else (GREEN if res.sl_return_pct >= 0 else RED)
+            ax.text(mid, y_top, f"{res.sl_return_pct:+.1f}%",
+                    color=col, fontsize=6.0, ha="center", va="top",
+                    zorder=5, rotation=90)
+
+    sl_total = (sl_compound - 1) * 100
+
+    ax.set_title(
+        f"{ticker} — Stop-Loss suiveur {sl_pct}%  "
+        f"| Avec SL: {sl_total:+.1f}% (composé)  "
+        f"| Sans SL: {combo.compound_return_pct:+.1f}% (composé)  "
+        f"| {n_hits} SL déclenchés / {len(sl_results)} zones",
+        color=TEXT, fontsize=9, pad=6, loc="left",
+    )
+    ax.set_ylabel("Prix", fontsize=8.5)
+    ax.grid(True, color=GRID, linewidth=0.5)
+    _set_date_ticks(ax, dates, N)
+
+    legend_elems = [
+        mpatches.Patch(facecolor=GREEN_FILL, alpha=0.5, edgecolor=GREEN,
+                       label="Sortie naturelle (fin de zone)"),
+        mpatches.Patch(facecolor=ORANGE, alpha=0.5, edgecolor=ORANGE,
+                       label="SL déclenché"),
+        Line2D([0], [0], color=ORANGE, linestyle="--", linewidth=1.0,
+               label=f"Niveau SL (pas de {sl_pct}%)"),
+    ]
+    ax.legend(handles=legend_elems, loc="upper right", fontsize=7,
+              framealpha=0.75, facecolor=PANEL, edgecolor=GRID)
+
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fig.tight_layout()
+    return fig
+
+
 # ── Helper ─────────────────────────────────────────────────────────────────────
 
 def _set_date_ticks(ax: plt.Axes, dates: pd.DatetimeIndex, N: int, n_ticks: int = 8) -> None:

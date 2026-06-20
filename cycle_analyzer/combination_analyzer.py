@@ -18,6 +18,15 @@ class ZoneResult:
 
 
 @dataclass
+class SLZoneResult:
+    """Result of trailing stop-loss simulation on one bullish zone."""
+    zone: ZoneResult
+    sl_return_pct: float           # actual return with SL applied
+    sl_hit: bool                   # True if SL was triggered before zone end
+    sl_exit_bar: int               # absolute bar index where trade was exited
+    sl_path: np.ndarray            # SL price level per bar (zone.start → sl_exit_bar)
+    original_return_pct: float     # return without SL (= zone.return_pct)
+
 class CombinationResult:
     cycles: List[CycleInfo]
     periods: List[int]
@@ -221,3 +230,71 @@ def get_custom_combination(prices: np.ndarray, selected_cycles: List[CycleInfo])
             combo_size=len(selected_cycles),
         )
     return cr
+
+
+# ── Stop-Loss simulation ───────────────────────────────────────────────────────
+
+def _simulate_sl_zone(prices: np.ndarray, zone: ZoneResult, sl_pct: float) -> SLZoneResult:
+    """
+    Simulate a trailing step stop-loss on a single bullish zone.
+
+    Mechanism:
+      - Entry at zone.start price; initial SL = entry × (1 - sl_pct/100)
+      - Each time price rises sl_pct% from the previous tier, SL steps up by sl_pct%
+        → tier 0: SL = entry × (1 - sl_pct%)
+        → tier 1 (gain ≥ sl_pct%): SL = entry (break-even)
+        → tier n (gain ≥ n × sl_pct%): SL = entry × (1 + (n-1) × sl_pct%)
+      - If price closes at or below SL: trade exits at SL price
+      - Otherwise trade exits at zone end price
+    """
+    zone_prices = prices[zone.start: zone.end + 1]
+    n = len(zone_prices)
+    if n < 2:
+        path = zone_prices[:1].copy() if n else np.array([])
+        return SLZoneResult(zone=zone, sl_return_pct=0.0, sl_hit=False,
+                            sl_exit_bar=zone.end, sl_path=path,
+                            original_return_pct=zone.return_pct)
+
+    entry = zone_prices[0]
+    sl_frac = sl_pct / 100.0
+    sl = entry * (1.0 - sl_frac)
+    max_price = entry
+    tier = 0
+
+    sl_path: List[float] = [sl]
+    sl_hit = False
+    exit_bar = zone.end
+    exit_ret = (zone_prices[-1] - entry) / entry * 100.0
+
+    for i in range(1, n):
+        price = float(zone_prices[i])
+
+        if price <= sl:
+            sl_hit = True
+            exit_bar = zone.start + i
+            exit_ret = (sl - entry) / entry * 100.0
+            sl_path.append(sl)
+            break
+
+        if price > max_price:
+            max_price = price
+            new_tier = int((max_price - entry) / entry / sl_frac)
+            if new_tier > tier:
+                tier = new_tier
+                sl = entry * (1.0 + (tier - 1) * sl_frac)
+
+        sl_path.append(sl)
+
+    return SLZoneResult(
+        zone=zone,
+        sl_return_pct=round(exit_ret, 2),
+        sl_hit=sl_hit,
+        sl_exit_bar=exit_bar,
+        sl_path=np.array(sl_path),
+        original_return_pct=zone.return_pct,
+    )
+
+
+def simulate_sl_zones(prices: np.ndarray, zones: List[ZoneResult], sl_pct: float) -> List[SLZoneResult]:
+    """Simulate trailing SL on every bullish zone of a combination."""
+    return [_simulate_sl_zone(prices, zone, sl_pct) for zone in zones]
