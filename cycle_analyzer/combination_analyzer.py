@@ -27,6 +27,8 @@ class SLZoneResult:
     sl_path: np.ndarray            # SL price level per bar (zone.start → sl_exit_bar)
     original_return_pct: float     # return without SL (= zone.return_pct)
 
+
+@dataclass
 class CombinationResult:
     cycles: List[CycleInfo]
     periods: List[int]
