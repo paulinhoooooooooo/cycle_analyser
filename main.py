@@ -331,11 +331,27 @@ Exemples :
         ptable.add_column("B (sin)", justify="right")
         ptable.add_column("ψ = atan2(A,B)", justify="right")
         ptable.add_column("ago (calculé)", justify="center", style="bold yellow")
+        ptable.add_column("Sine TV [dernier bar]", justify="right", style="bold magenta")
+        tv_sines = []
         for sp, A_s, B_s, amp_s, psi, ago in coeff_table:
-            ptable.add_row(str(sp), f"{A_s:.4f}", f"{B_s:.4f}", f"{_math.degrees(psi):.1f}°", str(ago))
+            tv_sine = _math.sin(2 * _math.pi * ago / sp)
+            tv_sines.append((sp, ago, tv_sine))
+            ptable.add_row(str(sp), f"{A_s:.4f}", f"{B_s:.4f}", f"{_math.degrees(psi):.1f}°", str(ago), f"{tv_sine:+.4f}")
         console.print(ptable)
 
         script = generate_pinescript(ticker, pine_periods, ago_values)
+
+        # Inject a verification header so the user can check the correct script is loaded
+        _last_date = dates[-1].strftime("%Y-%m-%d")
+        _sines_str = "  |  ".join(f"Cycle {p}b ≈ {sv:+.4f}" for p, _, sv in tv_sines)
+        _hdr = (
+            f"// Généré le {_last_date}  ·  Ticker: {ticker}  ·  Périodes: {', '.join(str(p) for p in pine_periods)}\n"
+            f"// Ago calculés : {', '.join(str(a) for a in ago_values)}\n"
+            f"// Sine attendu [dernier bar] : {_sines_str}\n"
+            f"// → Si TradingView affiche d'autres valeurs, recharger ce script\n"
+        )
+        _pine_lines = script.split('\n')
+        script = _pine_lines[0] + '\n' + _hdr + '\n'.join(_pine_lines[1:])
 
         out_pine = Path(f"cycles_{ticker}_{'_'.join(str(p) for p in pine_periods)}.pine")
         out_pine.write_text(script, encoding="utf-8")
@@ -368,12 +384,13 @@ Exemples :
             fig.savefig(out_chart, dpi=130, bbox_inches="tight", facecolor="#0d1117")
         _plt.close(fig)
 
+        _verify_str = "  |  ".join(f"Cycle {p}b ≈ {sv:+.3f}" for p, _, sv in tv_sines)
         console.print(Panel(
             f"[bold green]Script Pine sauvegardé :[/bold green] {out_pine.resolve()}\n"
             f"[bold green]Graphique comparatif  :[/bold green] {out_chart.resolve()}\n\n"
-            "[dim]Ouvrez ce fichier, sélectionnez tout (Ctrl+A) et copiez (Ctrl+C),\n"
-            "puis collez dans TradingView → Pine Editor → Nouveau script.\n"
-            "Le graphique utilise exactement les mêmes paramètres que le script Pine.[/dim]",
+            "[dim]→ Pine Editor TradingView : ouvrir ce fichier, Ctrl+A, Ctrl+C, coller dans un Nouveau script.[/dim]\n"
+            f"[dim]→ Vérification : au [/dim][bold]dernier bar[/bold][dim], les oscillateurs doivent afficher :[/dim]\n"
+            f"   [bold magenta]{_verify_str}[/bold magenta]",
             border_style="green", expand=False,
         ))
 
