@@ -132,7 +132,7 @@ def get_events_for_ticker(
 def _event_line(e: CycleEvent) -> str:
     icons = {
         "HAUSSIER_DEBUT": "🟢📈",
-        "HAUSSIER_FIN":   "🔴📉",
+        "HAUSSIER_FIN":   "🟢📉",
         "BAISSIER_DEBUT": "🔴📉",
         "BAISSIER_FIN":   "🔴📈",
     }
