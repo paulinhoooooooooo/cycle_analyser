@@ -75,7 +75,7 @@ def _annotate_future_transitions(
         if is_peak and not found_peak:
             bars = int(round(float(t_fut[i]))) - (N - 1)
             date_str = _future_date_str(dates, bars)
-            y_pos = float(fut_osc[i]) * 0.82
+            y_pos = float(fut_osc[i]) + 0.22  # above the peak
             ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=5.5,
                     ha="center", va="bottom", rotation=0,
                     zorder=6, clip_on=False, alpha=0.90)
@@ -84,7 +84,7 @@ def _annotate_future_transitions(
         if is_trough and not found_trough:
             bars = int(round(float(t_fut[i]))) - (N - 1)
             date_str = _future_date_str(dates, bars)
-            y_pos = float(fut_osc[i]) * 0.82
+            y_pos = float(fut_osc[i]) - 0.22  # below the trough
             ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=5.5,
                     ha="center", va="top", rotation=0,
                     zorder=6, clip_on=False, alpha=0.90)
