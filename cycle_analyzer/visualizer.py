@@ -60,32 +60,42 @@ def fig_to_base64(fig: plt.Figure) -> str:
     return encoded
 
 
-def _annotate_osc_transitions(ax, osc_norm: np.ndarray, dates: pd.DatetimeIndex,
-                               color: str, period: float) -> None:
-    """Add date labels (DD/MM/YY) at each oscillator peak and trough."""
-    N = len(osc_norm)
-    min_gap = max(6, int(period / 3))
-    last_annotated = -min_gap - 1
-
-    for i in range(1, N - 1):
-        if i >= len(dates):
-            break
-        rising_prev = osc_norm[i] > osc_norm[i - 1]
-        rising_next = osc_norm[i + 1] > osc_norm[i]
-        is_peak = rising_prev and not rising_next
+def _annotate_future_transitions(
+    ax, t_fut: np.ndarray, fut_osc: np.ndarray,
+    dates: pd.DatetimeIndex, N: int, color: str
+) -> None:
+    """Annotate only the next upcoming peak AND trough on the future dashed oscillator."""
+    found_peak = found_trough = False
+    for i in range(1, len(fut_osc) - 1):
+        rising_prev = fut_osc[i] > fut_osc[i - 1]
+        rising_next  = fut_osc[i + 1] > fut_osc[i]
+        is_peak   = rising_prev and not rising_next
         is_trough = not rising_prev and rising_next
 
-        if (is_peak or is_trough) and (i - last_annotated) >= min_gap:
-            date_str = dates[i].strftime("%d/%m/%y")
-            # Offset inward so text stays inside the axes headroom
-            y_pos = float(osc_norm[i]) * 0.88
-            va = "bottom" if is_peak else "top"
-            ax.text(
-                i, y_pos, date_str,
-                color=color, fontsize=7.0, ha="center", va=va,
-                rotation=75, zorder=4, alpha=0.90, clip_on=False,
-            )
-            last_annotated = i
+        if is_peak and not found_peak:
+            bars = int(round(float(t_fut[i]))) - (N - 1)
+            date_str = _future_date_str(dates, bars)
+            y_pos = float(fut_osc[i]) * 0.82
+            ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=7.5,
+                    ha="center", va="bottom", rotation=0, fontweight="bold",
+                    zorder=6, clip_on=False,
+                    bbox=dict(boxstyle="round,pad=0.2", facecolor=PANEL,
+                              edgecolor=color, alpha=0.80, linewidth=0.8))
+            found_peak = True
+
+        if is_trough and not found_trough:
+            bars = int(round(float(t_fut[i]))) - (N - 1)
+            date_str = _future_date_str(dates, bars)
+            y_pos = float(fut_osc[i]) * 0.82
+            ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=7.5,
+                    ha="center", va="top", rotation=0, fontweight="bold",
+                    zorder=6, clip_on=False,
+                    bbox=dict(boxstyle="round,pad=0.2", facecolor=PANEL,
+                              edgecolor=color, alpha=0.80, linewidth=0.8))
+            found_trough = True
+
+        if found_peak and found_trough:
+            break
 
 
 # ── Cycle table figure ────────────────────────────────────────────────────────
@@ -323,8 +333,7 @@ def plot_single_cycle(
     ax_osc.axhline(0, color=GRID, linewidth=1, zorder=2)
     ax_osc.axhline(1, color=GREEN, linewidth=0.7, linestyle="--", alpha=0.5, zorder=2)
     ax_osc.axhline(-1, color=RED, linewidth=0.7, linestyle="--", alpha=0.5, zorder=2)
-    ax_osc.set_ylim(-1.55, 1.55)  # headroom so date labels at ±1 aren't clipped
-    _annotate_osc_transitions(ax_osc, osc_norm, dates, BLUE, cycle.period)
+    ax_osc.set_ylim(-1.55, 1.55)
     ax_osc.set_ylabel("Oscillateur", fontsize=8)
     ax_osc.grid(True, color=GRID, linewidth=0.5)
 
@@ -355,6 +364,7 @@ def plot_single_cycle(
     ) / (amp_c + 1e-10)
     ax_osc.plot(t_fut, fut_osc_norm, color=BLUE, linewidth=1.0,
                 linestyle="--", alpha=0.45, zorder=3)
+    _annotate_future_transitions(ax_osc, t_fut, fut_osc_norm, dates, N, BLUE)
 
     # Vertical lines
     ax_price.axvline(next_x, color=event_color, linewidth=1.4,
@@ -477,8 +487,7 @@ def plot_combination(
         bull = get_bullish_mask(prices, cycle.period)
         ax.fill_between(x, osc_norm, 0, where=bull, color=GREEN, alpha=0.25, zorder=1)
         ax.fill_between(x, osc_norm, 0, where=~bull, color=RED, alpha=0.20, zorder=1)
-        ax.set_ylim(-1.55, 1.55)  # headroom so date labels at ±1 aren't clipped
-        _annotate_osc_transitions(ax, osc_norm, dates, col, cycle.period)
+        ax.set_ylim(-1.55, 1.55)
 
         ax.set_ylabel(f"{cycle.period}b", fontsize=8, color=col)
         ax.grid(True, color=GRID, linewidth=0.4)
@@ -527,6 +536,7 @@ def plot_combination(
             + cycle.coeff_b * np.sin(2 * np.pi * t_fut / cycle.period)
         ) / amp_c
         ax_osc.plot(t_fut, fut_osc, color=col, linewidth=1.0, linestyle="--", alpha=0.45, zorder=3)
+        _annotate_future_transitions(ax_osc, t_fut, fut_osc, dates, N, col)
 
     import warnings
     with warnings.catch_warnings():
