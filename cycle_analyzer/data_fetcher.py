@@ -5,7 +5,8 @@ from pathlib import Path
 
 
 def fetch_data(ticker: str, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
-    data = yf.download(ticker, period=period, interval=interval, auto_adjust=True, progress=False)
+    # auto_adjust=False keeps both Close (split-adjusted) and Adj Close (+ dividends)
+    data = yf.download(ticker, period=period, interval=interval, auto_adjust=False, progress=False)
     if data.empty:
         raise ValueError(f"Aucune donnée trouvée pour '{ticker}'. Vérifiez le symbole.")
     data = data.dropna()
@@ -56,12 +57,16 @@ def get_ticker_info(ticker: str) -> dict:
         return {"name": ticker, "currency": "", "exchange": "", "type": ""}
 
 
-def get_close_prices(data: pd.DataFrame) -> np.ndarray:
+def _extract_col(data: pd.DataFrame, col: str) -> np.ndarray:
+    """Extract a column from a potentially MultiIndex DataFrame."""
     if isinstance(data.columns, pd.MultiIndex):
-        close = data["Close"].iloc[:, 0].values.astype(float)
-    else:
-        close = data["Close"].values.astype(float)
-    return close
+        return data[col].iloc[:, 0].values.astype(float)
+    return data[col].values.astype(float)
+
+
+def get_close_prices(data: pd.DataFrame) -> np.ndarray:
+    """Split-adjusted close prices (no dividend adjustment) — consistent with TradingView."""
+    return _extract_col(data, "Close")
 
 
 def get_dates(data: pd.DataFrame) -> pd.DatetimeIndex:
