@@ -12,7 +12,7 @@ alerts:
     period: 5y
     interval: 1d
 
-  - ticker: ^SOX
+  - ticker: SOXQ
     cycles: "154,120"
     period: 5y
     interval: 1d
