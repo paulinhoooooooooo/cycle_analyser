@@ -220,6 +220,7 @@ def plot_single_cycle(
     bear_simple = 0.0
     bull_cmp = 1.0
     bear_cmp = 1.0
+    short_cmp = 1.0
 
     i = 0
     while i < N:
@@ -253,22 +254,23 @@ def plot_single_cycle(
                 ret = (prices[last_idx] - prices[start]) / prices[start] * 100
                 bear_simple += ret
                 bear_cmp *= 1 + ret / 100
+                short_cmp *= 1 + (-ret) / 100
                 if last_idx - start + 1 >= 3:
                     mid = (start + last_idx) / 2
-                    col = RED if ret <= 0 else GREEN
-                    ax_price.text(mid, y_bot, f"{ret:+.1f}%",
+                    col = GREEN if ret <= 0 else RED  # green = market fell = short profit
+                    ax_price.text(mid, y_bot, f"S:{-ret:+.1f}%",
                                   color=col, fontsize=7, ha="center", va="bottom",
                                   fontweight="bold", zorder=5)
 
     bull_compound = (bull_cmp - 1) * 100
-    bear_compound = (bear_cmp - 1) * 100
+    short_compound = (short_cmp - 1) * 100
 
     ax_price.set_title(
         f"{ticker} — Cycle {cycle.period} barres  "
         f"| Amp: {cycle.amplitude:,.2f}  | Force: {cycle.strength:.2f}  "
         f"| Stabilité: {cycle.stability:.2f}  "
         f"| ↑ {bull_simple:+.1f}% (Σ) / {bull_compound:+.1f}% (composé)"
-        f"  | ↓ {bear_simple:+.1f}% (Σ) / {bear_compound:+.1f}% (composé)",
+        f"  | Short: {-bear_simple:+.1f}% (Σ) / {short_compound:+.1f}% (composé)",
         color=TEXT, fontsize=9, pad=6, loc="left",
     )
     ax_price.set_ylabel("Prix", fontsize=8.5)
@@ -378,15 +380,15 @@ def plot_combination(
         ax_price.axvspan(zone.start, zone.end, color=RED_FILL, alpha=0.18, zorder=1)
         if zone.duration >= 3:
             mid = (zone.start + zone.end) / 2
-            col = RED if zone.return_pct <= 0 else GREEN
-            ax_price.text(mid, y_bot, f"{zone.return_pct:+.1f}%",
+            col = GREEN if zone.return_pct <= 0 else RED  # green = market fell = short profit
+            ax_price.text(mid, y_bot, f"S:{-zone.return_pct:+.1f}%",
                           color=col, fontsize=7.5, ha="center", va="bottom",
                           fontweight="bold", zorder=5)
 
     periods_str = " + ".join(str(p) for p in combo.periods)
     bear_str = (
-        f"  |  ↓ {combo.bearish_total_return_pct:+.1f}% (Σ) / {combo.bearish_compound_return_pct:+.1f}% (composé)"
-        f" · {len(combo.bearish_zones)} zones"
+        f"  |  Short: {-combo.bearish_total_return_pct:+.1f}% (Σ) / {combo.short_compound_return_pct:+.1f}% (composé)"
+        f" · {combo.bearish_hit_rate:.0f}% réussite · {len(combo.bearish_zones)} zones"
     ) if combo.bearish_zones else ""
     ax_price.set_title(
         f"{ticker} — Cycles {periods_str}  "

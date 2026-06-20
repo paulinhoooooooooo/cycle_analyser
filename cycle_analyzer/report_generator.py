@@ -46,23 +46,43 @@ def _combo_card_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
         for z in combo.zones[:12]
     )
     more = f" +{len(combo.zones)-12} zones" if len(combo.zones) > 12 else ""
+
+    # Short zones: gain = -price_change (positive when market fell)
+    short_zones_html = "".join(
+        '<span class="zone-chip {cls}">{ret:+.1f}%</span>'.format(
+            cls="pos" if z.return_pct <= 0 else "neg", ret=-z.return_pct
+        )
+        for z in combo.bearish_zones[:12]
+    )
+    short_more = f" +{len(combo.bearish_zones)-12} zones" if len(combo.bearish_zones) > 12 else ""
+
     bull_s = f"{combo.total_return_pct:+.1f}% ↑ total"
     bull_c = f"{combo.compound_return_pct:+.1f}% ↑ total"
-    bear_col = "red" if combo.bearish_total_return_pct <= 0 else "green"
-    bear_s = f"{combo.bearish_total_return_pct:+.1f}% ↓"
-    bear_c = f"{combo.bearish_compound_return_pct:+.1f}% ↓"
+    short_total = -combo.bearish_total_return_pct
+    short_s = f"{short_total:+.1f}% ↓ short"
+    short_c = f"{combo.short_compound_return_pct:+.1f}% ↓ short"
+    short_col = "green" if short_total >= 0 else "red"
+
+    short_section = ""
+    if combo.bearish_zones:
+        short_section = f"""
+      <div style="margin-top:6px;font-size:11px;color:var(--text2);">
+        Short (zones rouges) : {short_zones_html}{short_more}
+      </div>"""
+
     return f"""
     <div class="card">
       <div class="card-header">
         <span class="rank-badge">#{rank}</span>
         <span class="combo-title">Cycles : {combo.label}</span>
         <span class="stat-chip green ret-val" data-simple="{bull_s}" data-compound="{bull_c}">{bull_s}</span>
-        <span class="stat-chip">{combo.hit_rate:.0f}% réussite</span>
+        <span class="stat-chip">{combo.hit_rate:.0f}% réussite long</span>
         <span class="stat-chip">{combo.n_zones} zones</span>
         <span class="stat-chip">{combo.avg_return_pct:+.2f}% moy/zone</span>
-        <span class="stat-chip {bear_col} ret-val" data-simple="{bear_s}" data-compound="{bear_c}">{bear_s}</span>
+        <span class="stat-chip {short_col} ret-val" data-simple="{short_s}" data-compound="{short_c}">{short_s}</span>
+        <span class="stat-chip">{combo.bearish_hit_rate:.0f}% réussite short</span>
       </div>
-      <div class="zones-row">{zones_html}{more}</div>
+      <div class="zones-row">{zones_html}{more}</div>{short_section}
       <img src="data:image/png;base64,{img_b64}" class="chart-img" loading="lazy">
     </div>"""
 
@@ -101,11 +121,12 @@ def generate_report(
     top3_html = ""
     for c, sc, img in zip(top3, top3_combos, imgs_top3):
         label, bg, fg = _PHASE_BADGE.get(c.phase_state, ("—", "#21262d", "#c9d1d9"))
-        bear_col = "red" if sc.bearish_total_return_pct <= 0 else "green"
+        short_total = -sc.bearish_total_return_pct
+        short_col = "green" if short_total >= 0 else "red"
         bull_s = f"↑ {sc.total_return_pct:+.1f}% haussier"
         bull_c = f"↑ {sc.compound_return_pct:+.1f}% haussier"
-        bear_s = f"↓ {sc.bearish_total_return_pct:+.1f}% baissier"
-        bear_c = f"↓ {sc.bearish_compound_return_pct:+.1f}% baissier"
+        bear_s = f"↓ {short_total:+.1f}% short"
+        bear_c = f"↓ {sc.short_compound_return_pct:+.1f}% short"
         top3_html += f"""
         <div class="card">
           <div class="card-header">
@@ -116,7 +137,8 @@ def generate_report(
             <span class="stat-chip">Force: {c.strength:.2f}</span>
             <span class="stat-chip green">Stab: {c.stability:.2f}</span>
             <span class="stat-chip green ret-val" data-simple="{bull_s}" data-compound="{bull_c}">{bull_s}</span>
-            <span class="stat-chip {bear_col} ret-val" data-simple="{bear_s}" data-compound="{bear_c}">{bear_s}</span>
+            <span class="stat-chip {short_col} ret-val" data-simple="{bear_s}" data-compound="{bear_c}">{bear_s}</span>
+            <span class="stat-chip">{sc.bearish_hit_rate:.0f}% réussite short</span>
           </div>
           <img src="data:image/png;base64,{img}" class="chart-img" loading="lazy">
         </div>"""

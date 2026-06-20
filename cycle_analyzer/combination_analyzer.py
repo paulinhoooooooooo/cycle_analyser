@@ -33,6 +33,8 @@ class CombinationResult:
     bearish_zones: List[ZoneResult] = field(default_factory=list)
     bearish_total_return_pct: float = 0.0
     bearish_compound_return_pct: float = 0.0
+    bearish_hit_rate: float = 0.0       # % of bearish zones where market fell (short profit)
+    short_compound_return_pct: float = 0.0  # compounded return if shorting every bearish zone
     bearish_mask: np.ndarray = field(default_factory=lambda: np.array([], dtype=bool), repr=False)
     combo_size: int = 2
 
@@ -77,6 +79,24 @@ def _combined_bearish_mask(prices: np.ndarray, cycles: List[CycleInfo]) -> np.nd
     for c in cycles:
         mask &= ~get_bullish_mask(prices, c.period)
     return mask
+
+
+def _short_compound_return(zones: List[ZoneResult]) -> float:
+    """Compounded return when shorting every zone (gain = -price_change)."""
+    if not zones:
+        return 0.0
+    c = 1.0
+    for z in zones:
+        c *= 1 + (-z.return_pct) / 100
+    return round((c - 1) * 100, 2)
+
+
+def _short_hit_rate(zones: List[ZoneResult]) -> float:
+    """% of zones where market fell (short was profitable)."""
+    if not zones:
+        return 0.0
+    hits = sum(1 for z in zones if z.return_pct < 0)
+    return round(hits / len(zones) * 100, 1)
 
 
 def _compound_return(zones: List[ZoneResult]) -> float:
@@ -129,6 +149,8 @@ def _build_combo(prices: np.ndarray, combo: List[CycleInfo]) -> CombinationResul
         bearish_zones=bear_zones,
         bearish_total_return_pct=bear_total,
         bearish_compound_return_pct=_compound_return(bear_zones),
+        bearish_hit_rate=_short_hit_rate(bear_zones),
+        short_compound_return_pct=_short_compound_return(bear_zones),
         bearish_mask=bear_mask,
         combo_size=len(combo),
     )
@@ -193,6 +215,8 @@ def get_custom_combination(prices: np.ndarray, selected_cycles: List[CycleInfo])
             bearish_zones=bear_zones,
             bearish_total_return_pct=bear_total,
             bearish_compound_return_pct=_compound_return(bear_zones),
+            bearish_hit_rate=_short_hit_rate(bear_zones),
+            short_compound_return_pct=_short_compound_return(bear_zones),
             bearish_mask=bear_mask,
             combo_size=len(selected_cycles),
         )
