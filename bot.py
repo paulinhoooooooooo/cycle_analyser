@@ -183,9 +183,17 @@ async def handle_prochains(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not config_path.exists():
         await update.message.reply_text("❌ watchlist.yml introuvable sur le serveur.")
         return
-    with config_path.open(encoding="utf-8") as f:
-        config = yaml.safe_load(f)
-    report = build_report(config)
+    try:
+        with config_path.open(encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+    except Exception as exc:
+        await update.message.reply_text(f"❌ Erreur YAML dans watchlist.yml : {exc}")
+        return
+    try:
+        report = build_report(config)
+    except Exception as exc:
+        await update.message.reply_text(f"❌ Erreur lors du calcul : {exc}")
+        return
     await update.message.reply_text(report, parse_mode="HTML")
 
 
