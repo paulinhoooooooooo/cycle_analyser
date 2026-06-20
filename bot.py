@@ -178,8 +178,7 @@ def build_report(config: dict) -> str:
         if not events:
             lines.append("  ⚠ Aucun événement trouvé dans les 60 prochaines barres.")
         else:
-            for e in events:
-                lines.append(f"  {_event_line(e)}")
+            lines.append(f"  {_event_line(events[0])}")
         lines.append("")
 
     return "\n".join(lines).strip()
