@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import base64
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import matplotlib
@@ -126,6 +126,59 @@ def plot_cycle_table(cycles: List[CycleInfo]) -> plt.Figure:
     return fig
 
 
+# ── Next-event helpers ────────────────────────────────────────────────────────
+
+def _bars_to_next_transition(A: float, B: float, T: float, N: int) -> Tuple[int, str]:
+    """Bars from last data point until the cycle changes direction (pic or creux)."""
+    phi = np.arctan2(A, B)
+    t_last = float(N - 1)
+    curr_sign = 1 if np.cos(2 * np.pi * t_last / T + phi) >= 0 else -1
+    for k in range(1, int(2 * T) + 4):
+        new_sign = 1 if np.cos(2 * np.pi * (t_last + k) / T + phi) >= 0 else -1
+        if new_sign != curr_sign:
+            return k, ("pic" if curr_sign == 1 else "creux")
+    return max(1, int(T // 2)), "pic"
+
+
+def _next_combo_alignments(
+    cycles: List[CycleInfo], N: int, max_bars: int = 3000
+) -> Tuple[Optional[int], Optional[int]]:
+    """Return (bars_to_next_bull_start, bars_to_next_bear_start) from last bar."""
+    def state_at(t: float):
+        bull = bear = True
+        for c in cycles:
+            phi = np.arctan2(c.coeff_a, c.coeff_b)
+            d = np.cos(2 * np.pi * t / c.period + phi)
+            if d < 0:
+                bull = False
+            if d >= 0:
+                bear = False
+        return bull, bear
+
+    t_last = float(N - 1)
+    prev_bull, prev_bear = state_at(t_last)
+    next_bull: Optional[int] = None
+    next_bear: Optional[int] = None
+
+    for k in range(1, max_bars + 1):
+        b, e = state_at(t_last + k)
+        if b and not prev_bull and next_bull is None:
+            next_bull = k
+        if e and not prev_bear and next_bear is None:
+            next_bear = k
+        prev_bull, prev_bear = b, e
+        if next_bull is not None and next_bear is not None:
+            break
+
+    return next_bull, next_bear
+
+
+def _future_date_str(dates: pd.DatetimeIndex, bars_ahead: int) -> str:
+    avg_days = (dates[-1] - dates[0]).days / max(len(dates) - 1, 1)
+    future = dates[-1] + pd.Timedelta(days=int(round(bars_ahead * avg_days)))
+    return future.strftime("%d/%m/%Y")
+
+
 # ── Single cycle chart ────────────────────────────────────────────────────────
 
 def plot_single_cycle(
@@ -230,6 +283,48 @@ def plot_single_cycle(
     # Date ticks
     _set_date_ticks(ax_osc, dates, N)
 
+    # ── Next reversal vertical marker ─────────────────────────────────────────
+    bars_ahead, event_type = _bars_to_next_transition(
+        cycle.coeff_a, cycle.coeff_b, float(cycle.period), N
+    )
+    next_x = (N - 1) + bars_ahead
+    event_color = RED if event_type == "pic" else GREEN
+    event_label = "Pic ↓" if event_type == "pic" else "Creux ↑"
+    date_str = _future_date_str(dates, bars_ahead)
+
+    # Extend x-axis to show the future marker
+    pad = max(5, int(cycle.period * 0.12))
+    ax_price.set_xlim(0, next_x + pad)
+    ax_osc.set_xlim(0, next_x + pad)
+
+    # Draw future oscillator as dashed extension
+    t_fut = np.arange(N - 1, next_x + pad + 1, dtype=float)
+    A_c, B_c = cycle.coeff_a, cycle.coeff_b
+    amp_c = cycle.amplitude_log
+    fut_osc_norm = (
+        A_c * np.cos(2 * np.pi * t_fut / cycle.period)
+        + B_c * np.sin(2 * np.pi * t_fut / cycle.period)
+    ) / (amp_c + 1e-10)
+    ax_osc.plot(t_fut, fut_osc_norm, color=BLUE, linewidth=1.0,
+                linestyle="--", alpha=0.45, zorder=3)
+
+    # Vertical lines
+    ax_price.axvline(next_x, color=event_color, linewidth=1.4,
+                     linestyle="--", alpha=0.85, zorder=5)
+    ax_osc.axvline(next_x, color=event_color, linewidth=1.4,
+                   linestyle="--", alpha=0.85, zorder=5)
+
+    # Annotation on price panel
+    y_mid = ymin + (ymax - ymin) * 0.50
+    ax_price.text(
+        next_x + pad * 0.15, y_mid,
+        f"{event_label}\n{date_str}\n(dans {bars_ahead}b)",
+        color=event_color, fontsize=7.5, ha="left", va="center",
+        fontweight="bold", zorder=6,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL,
+                  edgecolor=event_color, alpha=0.85),
+    )
+
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -323,6 +418,34 @@ def plot_combination(
             ax.tick_params(labelbottom=False)
         else:
             _set_date_ticks(ax, dates, N)
+
+    # ── Next alignment markers ────────────────────────────────────────────────
+    next_bull, next_bear = _next_combo_alignments(combo.cycles, N)
+
+    x_max_extra = max(v for v in [next_bull, next_bear, 1] if v is not None)
+    pad_combo = max(10, int(x_max_extra * 0.12))
+    new_xlim = (0, N - 1 + x_max_extra + pad_combo)
+    ax_price.set_xlim(*new_xlim)
+    for ci in range(n_cycles):
+        fig.axes[1 + ci].set_xlim(*new_xlim)
+
+    def _add_combo_marker(ax_p, bars, col, label_txt, y_frac):
+        if bars is None:
+            return
+        xv = N - 1 + bars
+        date_s = _future_date_str(dates, bars)
+        ax_p.axvline(xv, color=col, linewidth=1.4, linestyle="--", alpha=0.85, zorder=5)
+        y_pos = ymin + (ymax - ymin) * y_frac
+        ax_p.text(
+            xv + pad_combo * 0.15, y_pos,
+            f"{label_txt}\n{date_s}\n(dans {bars}b)",
+            color=col, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL,
+                      edgecolor=col, alpha=0.85),
+        )
+
+    _add_combo_marker(ax_price, next_bull, GREEN, "↑ Alignement\nhaussier", 0.72)
+    _add_combo_marker(ax_price, next_bear, RED,   "↓ Alignement\nbaissier", 0.28)
 
     import warnings
     with warnings.catch_warnings():
