@@ -3,12 +3,42 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
+# Common aliases → canonical Yahoo Finance ticker
+# Useful when the shell eats the '^' prefix (e.g. Windows CMD)
+_TICKER_ALIASES: dict = {
+    # S&P 500
+    "SPX": "^GSPC", "GSPC": "^GSPC", "SP500": "^GSPC", "^SPX": "^GSPC",
+    # Nasdaq 100
+    "NDX": "^NDX", "NASDAQ": "^IXIC", "COMP": "^IXIC",
+    # Dow Jones
+    "DJI": "^DJI", "DOW": "^DJI", "DJIA": "^DJI",
+    # Other indices
+    "DAX": "^GDAXI", "GDAXI": "^GDAXI",
+    "CAC": "^FCHI", "CAC40": "^FCHI", "FCHI": "^FCHI",
+    "FTSE": "^FTSE",
+    "NIKKEI": "^N225", "N225": "^N225",
+    "VIX": "^VIX",
+    "RUT": "^RUT",
+    "SOX": "^SOX",
+}
+
+
+def _resolve_ticker(ticker: str) -> str:
+    """Return the canonical Yahoo Finance symbol, resolving common aliases."""
+    return _TICKER_ALIASES.get(ticker.upper(), ticker)
+
 
 def fetch_data(ticker: str, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
+    ticker = _resolve_ticker(ticker)
     # auto_adjust=False keeps both Close (split-adjusted) and Adj Close (+ dividends)
     data = yf.download(ticker, period=period, interval=interval, auto_adjust=False, progress=False)
     if data.empty:
-        raise ValueError(f"Aucune donnée trouvée pour '{ticker}'. Vérifiez le symbole.")
+        hint = ""
+        if "^" in ticker:
+            hint = ' Sur Windows CMD, entourez le ticker de guillemets : "^GSPC"'
+        raise ValueError(
+            f"Aucune donnée trouvée pour '{ticker}'. Vérifiez le symbole Yahoo Finance.{hint}"
+        )
     data = data.dropna()
     if len(data) < 50:
         raise ValueError(f"Pas assez de données ({len(data)} barres). Essayez une période plus longue.")
@@ -44,6 +74,7 @@ def load_from_csv(file_path: str) -> pd.DataFrame:
 
 
 def get_ticker_info(ticker: str) -> dict:
+    ticker = _resolve_ticker(ticker)
     try:
         t = yf.Ticker(ticker)
         info = t.info

@@ -246,7 +246,10 @@ Exemples :
         console.print("[yellow]Installez les dépendances : pip install -r requirements.txt[/yellow]")
         sys.exit(1)
 
-    ticker = args.ticker.upper()
+    from cycle_analyzer.data_fetcher import _resolve_ticker
+    ticker = _resolve_ticker(args.ticker.upper())
+    if ticker != args.ticker.upper():
+        console.print(f"[dim]Ticker résolu : [bold]{args.ticker}[/bold] → [bold cyan]{ticker}[/bold cyan][/dim]")
 
     # ── Fetch data (always needed) ────────────────────────────────────────────
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
