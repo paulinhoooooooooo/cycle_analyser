@@ -344,11 +344,12 @@ Exemples :
             import subprocess as _sp, platform as _plat
             _sys = _plat.system()
             if _sys == "Windows":
-                _sp.Popen(["notepad.exe", str(out_pine)], close_fds=True)
+                _sp.Popen(["notepad.exe", str(out_pine)])
                 console.print("[dim]✓ Fichier ouvert dans le Bloc-notes[/dim]")
-                # Also copy to clipboard on Windows
-                _sp.run(["clip"], input=script.encode("utf-16"), check=False)
-                console.print("[dim]✓ Copié dans le presse-papiers[/dim]")
+                # Copy to clipboard via PowerShell Set-Clipboard (most reliable on Windows)
+                ps_cmd = f'Set-Clipboard -Value (Get-Content -Path "{out_pine.resolve()}" -Raw)'
+                _sp.run(["powershell", "-Command", ps_cmd], check=False)
+                console.print("[dim]✓ Copié dans le presse-papiers (Ctrl+V pour coller)[/dim]")
             elif _sys == "Darwin":
                 _sp.Popen(["open", str(out_pine)])
                 _sp.run(["pbcopy"], input=script.encode("utf-8"), check=False)
