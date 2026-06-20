@@ -332,21 +332,27 @@ Exemples :
         out_pine = Path(f"cycles_{ticker}_{'_'.join(str(p) for p in pine_periods)}.pine")
         out_pine.write_text(script, encoding="utf-8")
 
-        console.print(f"\n[green]Script Pine sauvegardé : {out_pine.resolve()}[/green]")
-        console.print()
         console.print(Panel(
-            "[bold cyan]Contenu du script (à coller dans TradingView → Pine Editor → Nouveau) :[/bold cyan]",
-            border_style="cyan", expand=False,
+            f"[bold green]Script Pine sauvegardé :[/bold green] {out_pine.resolve()}\n\n"
+            "[dim]Ouvrez ce fichier, sélectionnez tout (Ctrl+A) et copiez (Ctrl+C),\n"
+            "puis collez dans TradingView → Pine Editor → Nouveau script.[/dim]",
+            border_style="green", expand=False,
         ))
-        console.print(script)
 
-        # Copy to clipboard on macOS
+        # Open file in default editor and copy to clipboard
         try:
             import subprocess as _sp, platform as _plat
-            if _plat.system() == "Darwin":
-                proc = _sp.run(["pbcopy"], input=script.encode("utf-8"), check=False)
-                if proc.returncode == 0:
-                    console.print("[dim]✓ Copié dans le presse-papiers (pbcopy)[/dim]")
+            _sys = _plat.system()
+            if _sys == "Windows":
+                _sp.Popen(["notepad.exe", str(out_pine)], close_fds=True)
+                console.print("[dim]✓ Fichier ouvert dans le Bloc-notes[/dim]")
+                # Also copy to clipboard on Windows
+                _sp.run(["clip"], input=script.encode("utf-16"), check=False)
+                console.print("[dim]✓ Copié dans le presse-papiers[/dim]")
+            elif _sys == "Darwin":
+                _sp.Popen(["open", str(out_pine)])
+                _sp.run(["pbcopy"], input=script.encode("utf-8"), check=False)
+                console.print("[dim]✓ Fichier ouvert et copié dans le presse-papiers[/dim]")
         except Exception:
             pass
 
