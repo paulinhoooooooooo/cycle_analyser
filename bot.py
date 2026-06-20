@@ -106,7 +106,6 @@ def get_events_for_ticker(
     periods_str = " + ".join(str(p) for p in periods)
 
     events: List[CycleEvent] = []
-    seen_types: set = set()
 
     for k in range(1, MAX_LOOKAHEAD + 1):
         bull_before, bear_before = _state_at(cycles, t_last + k - 1)
@@ -114,23 +113,16 @@ def get_events_for_ticker(
 
         est = _next_trading_date(last_date, k)
 
-        if not bull_before and bull_after and "HAUSSIER_DEBUT" not in seen_types:
+        if not bull_before and bull_after:
             events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", k, est))
-            seen_types.add("HAUSSIER_DEBUT")
-
-        if bull_before and not bull_after and "HAUSSIER_FIN" not in seen_types:
+        if bull_before and not bull_after:
             events.append(CycleEvent(ticker, periods_str, "HAUSSIER_FIN", k, est))
-            seen_types.add("HAUSSIER_FIN")
-
-        if not bear_before and bear_after and "BAISSIER_DEBUT" not in seen_types:
+        if not bear_before and bear_after:
             events.append(CycleEvent(ticker, periods_str, "BAISSIER_DEBUT", k, est))
-            seen_types.add("BAISSIER_DEBUT")
-
-        if bear_before and not bear_after and "BAISSIER_FIN" not in seen_types:
+        if bear_before and not bear_after:
             events.append(CycleEvent(ticker, periods_str, "BAISSIER_FIN", k, est))
-            seen_types.add("BAISSIER_FIN")
 
-        if len(seen_types) == 4:
+        if len(events) >= 2:
             break
 
     events.sort(key=lambda e: e.bars_away)
