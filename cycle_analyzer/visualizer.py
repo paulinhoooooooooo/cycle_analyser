@@ -129,14 +129,17 @@ def plot_cycle_table(cycles: List[CycleInfo]) -> plt.Figure:
 # ── Next-event helpers ────────────────────────────────────────────────────────
 
 def _bars_to_next_transition(A: float, B: float, T: float, N: int) -> Tuple[int, str]:
-    """Bars from last data point until the cycle changes direction (pic or creux)."""
-    phi = np.arctan2(A, B)
+    """Bars from last data point until the cycle changes direction (discrete osc differences)."""
     t_last = float(N - 1)
-    curr_sign = 1 if np.cos(2 * np.pi * t_last / T + phi) >= 0 else -1
+
+    def osc(t: float) -> float:
+        return A * np.cos(2 * np.pi * t / T) + B * np.sin(2 * np.pi * t / T)
+
+    curr_rising = osc(t_last) > osc(t_last - 1)
     for k in range(1, int(2 * T) + 4):
-        new_sign = 1 if np.cos(2 * np.pi * (t_last + k) / T + phi) >= 0 else -1
-        if new_sign != curr_sign:
-            return k, ("pic" if curr_sign == 1 else "creux")
+        new_rising = osc(t_last + k) > osc(t_last + k - 1)
+        if new_rising != curr_rising:
+            return k, ("pic" if curr_rising else "creux")
     return max(1, int(T // 2)), "pic"
 
 
@@ -147,11 +150,12 @@ def _next_combo_alignments(
     def state_at(t: float):
         bull = bear = True
         for c in cycles:
-            phi = np.arctan2(c.coeff_a, c.coeff_b)
-            d = np.cos(2 * np.pi * t / c.period + phi)
-            if d < 0:
+            osc_now  = c.coeff_a * np.cos(2*np.pi*t/c.period) + c.coeff_b * np.sin(2*np.pi*t/c.period)
+            osc_prev = c.coeff_a * np.cos(2*np.pi*(t-1)/c.period) + c.coeff_b * np.sin(2*np.pi*(t-1)/c.period)
+            rising = osc_now > osc_prev
+            if not rising:
                 bull = False
-            if d >= 0:
+            if rising:
                 bear = False
         return bull, bear
 
@@ -446,6 +450,18 @@ def plot_combination(
 
     _add_combo_marker(ax_price, next_bull, GREEN, "↑ Alignement\nhaussier", 0.72)
     _add_combo_marker(ax_price, next_bear, RED,   "↓ Alignement\nbaissier", 0.28)
+
+    # ── Dashed future extension for each individual oscillator ────────────────
+    t_fut = np.arange(N - 1, new_xlim[1] + 1, dtype=float)
+    for ci, cycle in enumerate(combo.cycles):
+        ax_osc = fig.axes[1 + ci]
+        col = CYCLE_COLORS[ci % len(CYCLE_COLORS)]
+        amp_c = cycle.amplitude_log + 1e-10
+        fut_osc = (
+            cycle.coeff_a * np.cos(2 * np.pi * t_fut / cycle.period)
+            + cycle.coeff_b * np.sin(2 * np.pi * t_fut / cycle.period)
+        ) / amp_c
+        ax_osc.plot(t_fut, fut_osc, color=col, linewidth=1.0, linestyle="--", alpha=0.45, zorder=3)
 
     import warnings
     with warnings.catch_warnings():

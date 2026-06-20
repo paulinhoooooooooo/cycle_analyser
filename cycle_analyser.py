@@ -339,7 +339,11 @@ Exemples :
             ptable.add_row(str(sp), f"{A_s:.4f}", f"{B_s:.4f}", f"{_math.degrees(psi):.1f}°", str(ago), f"{tv_sine:+.4f}")
         console.print(ptable)
 
-        script = generate_pinescript(ticker, pine_periods, ago_values)
+        anchor_times = [
+            int(dates[max(0, N - 1 - ago)].timestamp() * 1000)
+            for ago in ago_values
+        ]
+        script = generate_pinescript(ticker, pine_periods, ago_values, anchor_times)
 
         # Inject a verification header so the user can check the correct script is loaded
         _last_date = dates[-1].strftime("%Y-%m-%d")

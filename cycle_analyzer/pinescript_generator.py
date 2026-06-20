@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import List
+from typing import List, Optional
 
 
 def _compute_ago(A: float, B: float, T: float, N: int) -> int:
@@ -13,10 +13,36 @@ def _compute_ago(A: float, B: float, T: float, N: int) -> int:
 
 # ── 3-cycle script (reference template) ──────────────────────────────────────
 
-def _generate_three_cycles(ticker: str, periods: List[int], agos: List[int]) -> str:
+def _generate_three_cycles(ticker: str, periods: List[int], agos: List[int],
+                           anchor_dates: Optional[List[tuple]] = None) -> str:
     L1, L2, L3 = periods
     A1, A2, A3 = agos
     name = f"Cycles {ticker} - Oscillateurs sinusoidaux"
+
+    if anchor_dates and len(anchor_dates) == 3:
+        (Y1, M1, D1), (Y2, M2, D2), (Y3, M3, D3) = anchor_dates
+        anchor_block = f"""\
+// ============================================
+// 2. ANCRES FIXES (générées par Python — ne pas modifier)
+// ============================================
+var int fixedAnchor1 = 0
+var int fixedAnchor2 = 0
+var int fixedAnchor3 = 0
+if time <= timestamp({Y1}, {M1}, {D1}) + 86400000
+    fixedAnchor1 := bar_index
+if time <= timestamp({Y2}, {M2}, {D2}) + 86400000
+    fixedAnchor2 := bar_index
+if time <= timestamp({Y3}, {M3}, {D3}) + 86400000
+    fixedAnchor3 := bar_index"""
+    else:
+        anchor_block = f"""\
+// ============================================
+// 2. ANCRES (mode compatibilité)
+// ============================================
+var int fixedAnchor1 = last_bar_index - {A1}
+var int fixedAnchor2 = last_bar_index - {A2}
+var int fixedAnchor3 = last_bar_index - {A3}"""
+
     return f"""\
 //@version=6
 indicator("{name}", overlay=false)
@@ -25,15 +51,12 @@ indicator("{name}", overlay=false)
 // 1. PARAMETRES DES CYCLES
 // ============================================
 len1 = input.int({L1}, "Duree cycle long (barres)", group="Cycle long")
-ago1 = input.int({A1}, "Dernier bas, il y a combien de barres", group="Cycle long")
 col1 = input.color(color.orange, "Couleur", group="Cycle long")
 
 len2 = input.int({L2}, "Duree cycle moyen (barres)", group="Cycle moyen")
-ago2 = input.int({A2}, "Dernier bas, il y a combien de barres", group="Cycle moyen")
 col2 = input.color(color.blue, "Couleur", group="Cycle moyen")
 
 len3 = input.int({L3}, "Duree cycle court (barres)", group="Cycle court")
-ago3 = input.int({A3}, "Dernier bas, il y a combien de barres", group="Cycle court")
 col3 = input.color(color.fuchsia, "Couleur", group="Cycle court")
 
 showOrange = input.bool(true, "Afficher fond orange (long/moyen alignes)", group="Affichage")
@@ -41,20 +64,14 @@ showOrange = input.bool(true, "Afficher fond orange (long/moyen alignes)", group
 showGainColumn    = input.bool(true, "Afficher la colonne Gains Vert/Rouge", group="Gains Vert/Rouge")
 gainLookbackYears = input.int(5, "Periode comptee (annees)", minval=1, maxval=50, group="Gains Vert/Rouge")
 
-// ============================================
-// 2. CALCUL DES SINUSOIDES
-// ============================================
-anchor1 = last_bar_index - ago1
-anchor2 = last_bar_index - ago2
-anchor3 = last_bar_index - ago3
+{anchor_block}
 
-fixedAnchor1 = anchor1
-fixedAnchor2 = anchor2
-fixedAnchor3 = anchor3
-
-sine1 = math.sin(2*math.pi*(bar_index - anchor1)/len1)
-sine2 = math.sin(2*math.pi*(bar_index - anchor2)/len2)
-sine3 = math.sin(2*math.pi*(bar_index - anchor3)/len3)
+// ============================================
+// 3. CALCUL DES SINUSOIDES
+// ============================================
+sine1 = math.sin(2*math.pi*(bar_index - fixedAnchor1)/len1)
+sine2 = math.sin(2*math.pi*(bar_index - fixedAnchor2)/len2)
+sine3 = math.sin(2*math.pi*(bar_index - fixedAnchor3)/len3)
 
 plot(sine1, "Cycle long",  col1, 2)
 plot(sine2, "Cycle moyen", col2, 2)
@@ -65,29 +82,30 @@ hline(0,  "",          color=color.new(color.gray, 80))
 hline(-1, "BOTTOMING", color=color.new(color.gray, 50))
 
 // ============================================
-// 3. FONCTIONS
+// 4. FONCTIONS
 // ============================================
 f_phase(_s, _sp) =>
     rising = _s > _sp
     _s > 0.5 ? "TOPPING" : _s < -0.5 ? "BOTTOMING" : rising ? "RISING" : "FALLING"
 
-f_nextExtreme(_len, _ago) =>
-    phaseNow = _ago % _len
-    if phaseNow < 0
-        phaseNow := phaseNow + _len
-    targetTop = _len / 4.0
-    targetBot = _len * 3.0 / 4.0
+f_nextExtreme(_len, _anchor) =>
+    phaseNow = (float(bar_index) - float(_anchor)) % float(_len)
+    if phaseNow < 0.0
+        phaseNow := phaseNow + float(_len)
+    targetTop = float(_len) / 4.0
+    targetBot = float(_len) * 3.0 / 4.0
     nTop = targetTop - phaseNow
-    if nTop <= 0
-        nTop := nTop + _len
+    if nTop <= 0.0
+        nTop := nTop + float(_len)
     nBot = targetBot - phaseNow
-    if nBot <= 0
-        nBot := nBot + _len
+    if nBot <= 0.0
+        nBot := nBot + float(_len)
     isTop = nTop < nBot
     nBars = isTop ? nTop : nBot
     calendarDays = nBars * 7.0 / 5.0
     futureTime = time + int(calendarDays * 86400000.0)
-    str.format_time(futureTime, "dd MMM")
+    icon = isTop ? "↓" : "↑"
+    icon + " " + str.format_time(futureTime, "dd MMM")
 
 phase1 = f_phase(sine1, sine1[1])
 phase2 = f_phase(sine2, sine2[1])
@@ -169,13 +187,13 @@ if barstate.islast
         table.cell(t, 3, 0, "Rouge (" + str.tostring(gainLookbackYears) + "a)", text_color=color.red, text_size=size.small)
 
     table.cell(t, 0, 1, "Long",  text_color=col1, text_size=size.small)
-    table.cell(t, 1, 1, f_nextExtreme(len1, ago1), text_color=col1, text_size=size.small)
+    table.cell(t, 1, 1, f_nextExtreme(len1, fixedAnchor1), text_color=col1, text_size=size.small)
 
     table.cell(t, 0, 2, "Moyen", text_color=col2, text_size=size.small)
-    table.cell(t, 1, 2, f_nextExtreme(len2, ago2), text_color=col2, text_size=size.small)
+    table.cell(t, 1, 2, f_nextExtreme(len2, fixedAnchor2), text_color=col2, text_size=size.small)
 
     table.cell(t, 0, 3, "Court", text_color=col3, text_size=size.small)
-    table.cell(t, 1, 3, f_nextExtreme(len3, ago3), text_color=col3, text_size=size.small)
+    table.cell(t, 1, 3, f_nextExtreme(len3, fixedAnchor3), text_color=col3, text_size=size.small)
 
     if showGainColumn
         cutoffTime = time - gainLookbackYears * 365.25 * 86400000.0
@@ -244,10 +262,32 @@ alertcondition(bearEndIn3,   title="J-3 : fin alignement BAISSIER",   message="F
 
 # ── 2-cycle script ────────────────────────────────────────────────────────────
 
-def _generate_two_cycles(ticker: str, periods: List[int], agos: List[int]) -> str:
+def _generate_two_cycles(ticker: str, periods: List[int], agos: List[int],
+                         anchor_dates: Optional[List[tuple]] = None) -> str:
     L1, L2 = periods
     A1, A2 = agos
     name = f"Cycles {ticker} - Oscillateurs sinusoidaux"
+
+    if anchor_dates and len(anchor_dates) == 2:
+        (Y1, M1, D1), (Y2, M2, D2) = anchor_dates
+        anchor_block = f"""\
+// ============================================
+// 2. ANCRES FIXES (générées par Python — ne pas modifier)
+// ============================================
+var int fixedAnchor1 = 0
+var int fixedAnchor2 = 0
+if time <= timestamp({Y1}, {M1}, {D1}) + 86400000
+    fixedAnchor1 := bar_index
+if time <= timestamp({Y2}, {M2}, {D2}) + 86400000
+    fixedAnchor2 := bar_index"""
+    else:
+        anchor_block = f"""\
+// ============================================
+// 2. ANCRES (mode compatibilité — sans dates fixes)
+// ============================================
+var int fixedAnchor1 = last_bar_index - {A1}
+var int fixedAnchor2 = last_bar_index - {A2}"""
+
     return f"""\
 //@version=6
 indicator("{name}", overlay=false)
@@ -256,27 +296,21 @@ indicator("{name}", overlay=false)
 // 1. PARAMETRES DES CYCLES
 // ============================================
 len1 = input.int({L1}, "Duree cycle long (barres)", group="Cycle long")
-ago1 = input.int({A1}, "Dernier bas, il y a combien de barres", group="Cycle long")
 col1 = input.color(color.orange, "Couleur", group="Cycle long")
 
 len2 = input.int({L2}, "Duree cycle court (barres)", group="Cycle court")
-ago2 = input.int({A2}, "Dernier bas, il y a combien de barres", group="Cycle court")
 col2 = input.color(color.blue, "Couleur", group="Cycle court")
 
 showGainColumn    = input.bool(true, "Afficher la colonne Gains Vert/Rouge", group="Gains Vert/Rouge")
 gainLookbackYears = input.int(5, "Periode comptee (annees)", minval=1, maxval=50, group="Gains Vert/Rouge")
 
-// ============================================
-// 2. CALCUL DES SINUSOIDES
-// ============================================
-anchor1 = last_bar_index - ago1
-anchor2 = last_bar_index - ago2
+{anchor_block}
 
-fixedAnchor1 = anchor1
-fixedAnchor2 = anchor2
-
-sine1 = math.sin(2*math.pi*(bar_index - anchor1)/len1)
-sine2 = math.sin(2*math.pi*(bar_index - anchor2)/len2)
+// ============================================
+// 3. CALCUL DES SINUSOIDES
+// ============================================
+sine1 = math.sin(2*math.pi*(bar_index - fixedAnchor1)/len1)
+sine2 = math.sin(2*math.pi*(bar_index - fixedAnchor2)/len2)
 
 plot(sine1, "Cycle long",  col1, 2)
 plot(sine2, "Cycle court", col2, 2)
@@ -286,25 +320,26 @@ hline(0,  "",          color=color.new(color.gray, 80))
 hline(-1, "BOTTOMING", color=color.new(color.gray, 50))
 
 // ============================================
-// 3. FONCTIONS
+// 4. FONCTIONS
 // ============================================
-f_nextExtreme(_len, _ago) =>
-    phaseNow = _ago % _len
-    if phaseNow < 0
-        phaseNow := phaseNow + _len
-    targetTop = _len / 4.0
-    targetBot = _len * 3.0 / 4.0
+f_nextExtreme(_len, _anchor) =>
+    phaseNow = (float(bar_index) - float(_anchor)) % float(_len)
+    if phaseNow < 0.0
+        phaseNow := phaseNow + float(_len)
+    targetTop = float(_len) / 4.0
+    targetBot = float(_len) * 3.0 / 4.0
     nTop = targetTop - phaseNow
-    if nTop <= 0
-        nTop := nTop + _len
+    if nTop <= 0.0
+        nTop := nTop + float(_len)
     nBot = targetBot - phaseNow
-    if nBot <= 0
-        nBot := nBot + _len
+    if nBot <= 0.0
+        nBot := nBot + float(_len)
     isTop = nTop < nBot
     nBars = isTop ? nTop : nBot
     calendarDays = nBars * 7.0 / 5.0
     futureTime = time + int(calendarDays * 86400000.0)
-    str.format_time(futureTime, "dd MMM")
+    icon = isTop ? "↓" : "↑"
+    icon + " " + str.format_time(futureTime, "dd MMM")
 
 // ============================================
 // 4. ZONES DE FOND
@@ -377,9 +412,9 @@ if barstate.islast
         table.cell(t, 3, 0, "Rouge (" + str.tostring(gainLookbackYears) + "a)", text_color=color.red, text_size=size.small)
 
     table.cell(t, 0, 1, "Long",  text_color=col1, text_size=size.small)
-    table.cell(t, 1, 1, f_nextExtreme(len1, ago1), text_color=col1, text_size=size.small)
+    table.cell(t, 1, 1, f_nextExtreme(len1, fixedAnchor1), text_color=col1, text_size=size.small)
     table.cell(t, 0, 2, "Court", text_color=col2, text_size=size.small)
-    table.cell(t, 1, 2, f_nextExtreme(len2, ago2), text_color=col2, text_size=size.small)
+    table.cell(t, 1, 2, f_nextExtreme(len2, fixedAnchor2), text_color=col2, text_size=size.small)
 
     if showGainColumn
         cutoffTime = time - gainLookbackYears * 365.25 * 86400000.0
@@ -437,8 +472,26 @@ alertcondition(allBear_0 and (not allBear_k),  title="J-3 : fin alignement BAISS
 
 # ── 1-cycle script ────────────────────────────────────────────────────────────
 
-def _generate_single_cycle(ticker: str, period: int, ago: int) -> str:
+def _generate_single_cycle(ticker: str, period: int, ago: int,
+                           anchor_date: Optional[tuple] = None) -> str:
     name = f"Cycles {ticker} - Oscillateurs sinusoidaux"
+
+    if anchor_date:
+        Y1, M1, D1 = anchor_date
+        anchor_block = f"""\
+// ============================================
+// 2. ANCRE FIXE (générée par Python — ne pas modifier)
+// ============================================
+var int fixedAnchor1 = 0
+if time <= timestamp({Y1}, {M1}, {D1}) + 86400000
+    fixedAnchor1 := bar_index"""
+    else:
+        anchor_block = f"""\
+// ============================================
+// 2. ANCRE (mode compatibilité)
+// ============================================
+var int fixedAnchor1 = last_bar_index - {ago}"""
+
     return f"""\
 //@version=6
 indicator("{name}", overlay=false)
@@ -447,19 +500,17 @@ indicator("{name}", overlay=false)
 // 1. PARAMETRES DU CYCLE
 // ============================================
 len1 = input.int({period}, "Duree du cycle (barres)")
-ago1 = input.int({ago},    "Dernier bas, il y a combien de barres")
 col1 = input.color(color.orange, "Couleur")
 
 showGainColumn    = input.bool(true, "Afficher la colonne Gains Vert/Rouge", group="Gains Vert/Rouge")
 gainLookbackYears = input.int(5, "Periode comptee (annees)", minval=1, maxval=50, group="Gains Vert/Rouge")
 
-// ============================================
-// 2. CALCUL DE LA SINUSOIDE
-// ============================================
-anchor1 = last_bar_index - ago1
-fixedAnchor1 = anchor1
+{anchor_block}
 
-sine1 = math.sin(2*math.pi*(bar_index - anchor1)/len1)
+// ============================================
+// 3. CALCUL DE LA SINUSOIDE
+// ============================================
+sine1 = math.sin(2*math.pi*(bar_index - fixedAnchor1)/len1)
 
 plot(sine1, "Cycle", col1, 2)
 
@@ -468,25 +519,26 @@ hline(0,  "",          color=color.new(color.gray, 80))
 hline(-1, "BOTTOMING", color=color.new(color.gray, 50))
 
 // ============================================
-// 3. FONCTIONS
+// 4. FONCTIONS
 // ============================================
-f_nextExtreme(_len, _ago) =>
-    phaseNow = _ago % _len
-    if phaseNow < 0
-        phaseNow := phaseNow + _len
-    targetTop = _len / 4.0
-    targetBot = _len * 3.0 / 4.0
+f_nextExtreme(_len, _anchor) =>
+    phaseNow = (float(bar_index) - float(_anchor)) % float(_len)
+    if phaseNow < 0.0
+        phaseNow := phaseNow + float(_len)
+    targetTop = float(_len) / 4.0
+    targetBot = float(_len) * 3.0 / 4.0
     nTop = targetTop - phaseNow
-    if nTop <= 0
-        nTop := nTop + _len
+    if nTop <= 0.0
+        nTop := nTop + float(_len)
     nBot = targetBot - phaseNow
-    if nBot <= 0
-        nBot := nBot + _len
+    if nBot <= 0.0
+        nBot := nBot + float(_len)
     isTop = nTop < nBot
     nBars = isTop ? nTop : nBot
     calendarDays = nBars * 7.0 / 5.0
     futureTime = time + int(calendarDays * 86400000.0)
-    str.format_time(futureTime, "dd MMM")
+    icon = isTop ? "↓" : "↑"
+    icon + " " + str.format_time(futureTime, "dd MMM")
 
 // ============================================
 // 4. ZONES DE FOND
@@ -548,7 +600,7 @@ if barstate.islast
         table.cell(t, 2, 0, "Vert (" + str.tostring(gainLookbackYears) + "a)", text_color=color.green, text_size=size.small)
         table.cell(t, 3, 0, "Rouge (" + str.tostring(gainLookbackYears) + "a)", text_color=color.red, text_size=size.small)
     table.cell(t, 0, 1, str.tostring(len1) + "b", text_color=col1, text_size=size.small)
-    table.cell(t, 1, 1, f_nextExtreme(len1, ago1), text_color=col1, text_size=size.small)
+    table.cell(t, 1, 1, f_nextExtreme(len1, fixedAnchor1), text_color=col1, text_size=size.small)
     if showGainColumn
         cutoffTime = time - gainLookbackYears * 365.25 * 86400000.0
         float sumGreen = 0.0
@@ -600,12 +652,32 @@ def generate_pinescript(
     ticker: str,
     periods: List[int],
     ago_values: List[int],
+    anchor_times: Optional[List[int]] = None,  # Unix ms timestamps for each cycle anchor
 ) -> str:
+    """Generate Pine Script for 1, 2 or 3 cycles.
+
+    anchor_times: list of Unix timestamps in milliseconds for the rising zero-crossing
+    of each cycle's sine wave. When provided, anchors are fixed and dates in the
+    'Prochain' table count down correctly as new bars are added.
+    """
+    def _ts_to_ymd(ts_ms: int) -> tuple:
+        import datetime
+        d = datetime.datetime.utcfromtimestamp(ts_ms / 1000)
+        return (d.year, d.month, d.day)
+
+    if anchor_times:
+        dates = [_ts_to_ymd(ts) for ts in anchor_times]
+    else:
+        dates = None
+
     n = len(periods)
     if n == 1:
-        return _generate_single_cycle(ticker, periods[0], ago_values[0])
+        return _generate_single_cycle(ticker, periods[0], ago_values[0],
+                                      anchor_date=dates[0] if dates else None)
     if n == 2:
-        return _generate_two_cycles(ticker, periods, ago_values)
+        return _generate_two_cycles(ticker, periods, ago_values,
+                                    anchor_dates=dates)
     if n == 3:
-        return _generate_three_cycles(ticker, periods, ago_values)
+        return _generate_three_cycles(ticker, periods, ago_values,
+                                      anchor_dates=dates)
     raise ValueError("Only 1, 2 or 3 cycles are supported")
