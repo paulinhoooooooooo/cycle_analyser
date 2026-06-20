@@ -495,6 +495,8 @@ def plot_power_spectrum(prices: np.ndarray, cycles: List[CycleInfo]) -> plt.Figu
 def _set_date_ticks(ax: plt.Axes, dates: pd.DatetimeIndex, N: int, n_ticks: int = 8) -> None:
     step = max(1, N // n_ticks)
     tick_pos = list(range(0, N, step))
+    if not tick_pos or tick_pos[-1] < N - 1:
+        tick_pos.append(N - 1)  # always show the last date
     tick_labels = [dates[i].strftime("%b %Y") if i < len(dates) else "" for i in tick_pos]
     ax.set_xticks(tick_pos)
     ax.set_xticklabels(tick_labels, fontsize=7.5, rotation=20, ha="right")

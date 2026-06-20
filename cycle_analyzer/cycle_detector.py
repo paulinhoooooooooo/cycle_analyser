@@ -283,15 +283,16 @@ def get_oscillator_series(prices: np.ndarray, period: int) -> np.ndarray:
 
 
 def get_bullish_mask(prices: np.ndarray, period: int) -> np.ndarray:
-    """True where the cycle derivative is positive (ascending phase)."""
+    """True where the cycle is rising (discrete difference, matches TradingView's sine > sine[1])."""
     detrended, _ = _detrend_log(prices)
     A, B, _ = _fit_sine(detrended, float(period))
     N = len(prices)
     t = np.arange(N, dtype=float)
-    direction = (
-        -A * np.sin(2 * np.pi * t / period) + B * np.cos(2 * np.pi * t / period)
-    ) * (2 * np.pi / period)
-    return direction > 0
+    osc = A * np.cos(2 * np.pi * t / period) + B * np.sin(2 * np.pi * t / period)
+    mask = np.empty(N, dtype=bool)
+    mask[1:] = osc[1:] > osc[:-1]
+    mask[0] = mask[1]
+    return mask
 
 
 def bars_to_next_turning_point(cycle: "CycleInfo") -> Tuple[int, str]:
