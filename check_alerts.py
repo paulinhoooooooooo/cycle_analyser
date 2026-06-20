@@ -99,40 +99,40 @@ def check_ticker(
     last_date = dates[-1].strftime("%d/%m/%Y")
     periods_str = " + ".join(str(p) for p in periods)
 
-    # Transition EXACTE à la barre +lookahead :
-    # état à la barre (lookahead-1) ≠ état à la barre lookahead
-    bull_before, bear_before = _state_at(cycles, t_last + lookahead - 1)
-    bull_after, bear_after = _state_at(cycles, t_last + lookahead)
-
     messages: List[str] = []
 
-    if not bull_before and bull_after:
-        messages.append(
-            f"🟢 <b>{ticker}</b> — Cycles {periods_str}b\n"
-            f"📈 Alignement <b>HAUSSIER</b> dans <b>{lookahead} barres</b>\n"
-            f"📅 Données au {last_date}"
-        )
+    # Vérifie les transitions pour chaque k de 1 à lookahead (J-1, J-2, J-3…)
+    for k in range(1, lookahead + 1):
+        bull_before, bear_before = _state_at(cycles, t_last + k - 1)
+        bull_after, bear_after = _state_at(cycles, t_last + k)
 
-    if bull_before and not bull_after:
-        messages.append(
-            f"🔴 <b>{ticker}</b> — Cycles {periods_str}b\n"
-            f"📉 Fin de l'alignement <b>HAUSSIER</b> dans <b>{lookahead} barres</b>\n"
-            f"📅 Données au {last_date}"
-        )
+        if not bull_before and bull_after:
+            messages.append(
+                f"🟢 <b>{ticker}</b> — Cycles {periods_str}b\n"
+                f"📈 Alignement <b>HAUSSIER</b> dans <b>{k} barre{'s' if k > 1 else ''}</b>\n"
+                f"📅 Données au {last_date}"
+            )
 
-    if not bear_before and bear_after:
-        messages.append(
-            f"🔴 <b>{ticker}</b> — Cycles {periods_str}b\n"
-            f"📉 Alignement <b>BAISSIER</b> dans <b>{lookahead} barres</b>\n"
-            f"📅 Données au {last_date}"
-        )
+        if bull_before and not bull_after:
+            messages.append(
+                f"🔴 <b>{ticker}</b> — Cycles {periods_str}b\n"
+                f"📉 Fin de l'alignement <b>HAUSSIER</b> dans <b>{k} barre{'s' if k > 1 else ''}</b>\n"
+                f"📅 Données au {last_date}"
+            )
 
-    if bear_before and not bear_after:
-        messages.append(
-            f"🟢 <b>{ticker}</b> — Cycles {periods_str}b\n"
-            f"📈 Fin de l'alignement <b>BAISSIER</b> dans <b>{lookahead} barres</b>\n"
-            f"📅 Données au {last_date}"
-        )
+        if not bear_before and bear_after:
+            messages.append(
+                f"🔴 <b>{ticker}</b> — Cycles {periods_str}b\n"
+                f"📉 Alignement <b>BAISSIER</b> dans <b>{k} barre{'s' if k > 1 else ''}</b>\n"
+                f"📅 Données au {last_date}"
+            )
+
+        if bear_before and not bear_after:
+            messages.append(
+                f"🟢 <b>{ticker}</b> — Cycles {periods_str}b\n"
+                f"📈 Fin de l'alignement <b>BAISSIER</b> dans <b>{k} barre{'s' if k > 1 else ''}</b>\n"
+                f"📅 Données au {last_date}"
+            )
 
     return messages
 
