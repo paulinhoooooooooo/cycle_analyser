@@ -256,13 +256,8 @@ def plot_single_cycle(
     bear_cmp = 1.0
     short_cmp = 1.0
 
-    BULL_Y_FRACS = [0.985, 0.910, 0.835]
-    BEAR_Y_FRACS = [0.015, 0.090, 0.165]
     bull_zone_idx = 0
     bear_zone_idx = 0
-    # Estimate zone count from period; apply same dynamic threshold as combination chart
-    _est_zones = max(1, N // max(1, int(cycle.period)))
-    _zone_min_ret = 0.0 if _est_zones <= 10 else (4.0 if _est_zones <= 16 else (7.0 if _est_zones <= 24 else 10.0))
 
     i = 0
     while i < N:
@@ -278,13 +273,12 @@ def plot_single_cycle(
                 ret = (prices[last_idx] - prices[start]) / prices[start] * 100
                 bull_simple += ret
                 bull_cmp *= 1 + ret / 100
-                if last_idx - start + 1 >= 3 and abs(ret) >= _zone_min_ret:
+                if last_idx - start + 1 >= 3:
                     mid = (start + last_idx) / 2
                     col = GREEN if ret >= 0 else RED
-                    y_lbl = ymin + (ymax - ymin) * BULL_Y_FRACS[bull_zone_idx % 3]
-                    ax_price.text(mid, y_lbl, f"{ret:+.1f}%",
-                                  color=col, fontsize=6.5, ha="center", va="top",
-                                  fontweight="bold", zorder=5, rotation=90)
+                    ax_price.text(mid, y_top, f"{ret:+.1f}%",
+                                  color=col, fontsize=5.0, ha="center", va="top",
+                                  zorder=5, rotation=90)
                 bull_zone_idx += 1
         else:
             start = i
@@ -299,13 +293,12 @@ def plot_single_cycle(
                 bear_simple += ret
                 bear_cmp *= 1 + ret / 100
                 short_cmp *= 1 + (-ret) / 100
-                if last_idx - start + 1 >= 3 and abs(ret) >= _zone_min_ret:
+                if last_idx - start + 1 >= 3:
                     mid = (start + last_idx) / 2
-                    col = GREEN if ret <= 0 else RED  # green = market fell = short profit
-                    y_lbl = ymin + (ymax - ymin) * BEAR_Y_FRACS[bear_zone_idx % 3]
-                    ax_price.text(mid, y_lbl, f"S:{-ret:+.1f}%",
-                                  color=col, fontsize=6.5, ha="center", va="bottom",
-                                  fontweight="bold", zorder=5, rotation=90)
+                    col = GREEN if ret <= 0 else RED
+                    ax_price.text(mid, y_bot, f"S:{-ret:+.1f}%",
+                                  color=col, fontsize=5.0, ha="center", va="bottom",
+                                  zorder=5, rotation=90)
                 bear_zone_idx += 1
 
     bull_compound = (bull_cmp - 1) * 100
@@ -413,44 +406,25 @@ def plot_combination(
     y_top = ymin + (ymax - ymin) * 0.985
     y_bot = ymin + (ymax - ymin) * 0.015
 
-    BULL_Y_FRACS = [0.985, 0.910, 0.835]
-    BEAR_Y_FRACS = [0.015, 0.090, 0.165]
-
-    # Dynamic min-return threshold: avoid label avalanche when many zones
-    def _min_ret(n: int) -> float:
-        if n <= 10: return 0.0
-        if n <= 16: return 4.0
-        if n <= 24: return 7.0
-        return 10.0
-
-    bull_min = _min_ret(len(combo.zones))
-    bear_min = _min_ret(len(combo.bearish_zones))
-
     # ── Shade bullish zones (green) ───────────────────────────────────────
-    bull_label_idx = 0
     for zone in combo.zones:
         ax_price.axvspan(zone.start, zone.end, color=GREEN_FILL, alpha=0.22, zorder=1)
-        if zone.duration >= 3 and abs(zone.return_pct) >= bull_min:
+        if zone.duration >= 3:
             mid = (zone.start + zone.end) / 2
             col = GREEN if zone.return_pct >= 0 else RED
-            y_lbl = ymin + (ymax - ymin) * BULL_Y_FRACS[bull_label_idx % 3]
-            ax_price.text(mid, y_lbl, f"{zone.return_pct:+.1f}%",
-                          color=col, fontsize=6.5, ha="center", va="top",
-                          fontweight="bold", zorder=5, rotation=90)
-            bull_label_idx += 1
+            ax_price.text(mid, y_top, f"{zone.return_pct:+.1f}%",
+                          color=col, fontsize=5.0, ha="center", va="top",
+                          zorder=5, rotation=90)
 
     # ── Shade bearish zones (red) ─────────────────────────────────────────
-    bear_label_idx = 0
     for zone in combo.bearish_zones:
         ax_price.axvspan(zone.start, zone.end, color=RED_FILL, alpha=0.18, zorder=1)
-        if zone.duration >= 3 and abs(zone.return_pct) >= bear_min:
+        if zone.duration >= 3:
             mid = (zone.start + zone.end) / 2
-            col = GREEN if zone.return_pct <= 0 else RED  # green = market fell = short profit
-            y_lbl = ymin + (ymax - ymin) * BEAR_Y_FRACS[bear_label_idx % 3]
-            ax_price.text(mid, y_lbl, f"S:{-zone.return_pct:+.1f}%",
-                          color=col, fontsize=6.5, ha="center", va="bottom",
-                          fontweight="bold", zorder=5, rotation=90)
-            bear_label_idx += 1
+            col = GREEN if zone.return_pct <= 0 else RED
+            ax_price.text(mid, y_bot, f"S:{-zone.return_pct:+.1f}%",
+                          color=col, fontsize=5.0, ha="center", va="bottom",
+                          zorder=5, rotation=90)
 
     periods_str = " + ".join(str(p) for p in combo.periods)
     bear_str = (
