@@ -132,7 +132,7 @@ def check_ticker(
 
         if bear_before and not bear_after:
             messages.append(
-                f"🟢 <b>{ticker}</b> — Cycles {periods_str}b ({periods_detail})\n"
+                f"🔴 <b>{ticker}</b> — Cycles {periods_str}b ({periods_detail})\n"
                 f"📈 Fin de l'alignement <b>BAISSIER</b> dans <b>{k} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )

@@ -134,7 +134,7 @@ def _event_line(e: CycleEvent) -> str:
         "HAUSSIER_DEBUT": "🟢📈",
         "HAUSSIER_FIN":   "🔴📉",
         "BAISSIER_DEBUT": "🔴📉",
-        "BAISSIER_FIN":   "🟢📈",
+        "BAISSIER_FIN":   "🔴📈",
     }
     labels = {
         "HAUSSIER_DEBUT": "Début alignement HAUSSIER",
