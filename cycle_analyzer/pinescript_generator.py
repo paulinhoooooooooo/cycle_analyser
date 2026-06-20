@@ -11,7 +11,7 @@ def _compute_ago(A: float, B: float, T: float, N: int) -> int:
     return int(round(ago))
 
 
-# ── 3-cycle script (reference template) ──────────────────────────────────────
+# ── 3-cycle script ────────────────────────────────────────────────────────────
 
 def _generate_three_cycles(ticker: str, periods: List[int], agos: List[int],
                            anchor_dates: Optional[List[tuple]] = None) -> str:
@@ -23,25 +23,49 @@ def _generate_three_cycles(ticker: str, periods: List[int], agos: List[int],
         (Y1, M1, D1), (Y2, M2, D2), (Y3, M3, D3) = anchor_dates
         anchor_block = f"""\
 // ============================================
-// 2. ANCRES FIXES (générées par Python — ne pas modifier)
+// 2. ANCRES
 // ============================================
-var int fixedAnchor1 = 0
-var int fixedAnchor2 = 0
-var int fixedAnchor3 = 0
-if time <= timestamp({Y1}, {M1}, {D1}) + 86400000
+ago1 = input.int({A1}, "Offset cycle long (barres)", group="Cycle long")
+ago2 = input.int({A2}, "Offset cycle moyen (barres)", group="Cycle moyen")
+ago3 = input.int({A3}, "Offset cycle court (barres)", group="Cycle court")
+
+// Ancres glissantes pour les courbes (identique au comportement original)
+anchor1 = last_bar_index - ago1
+anchor2 = last_bar_index - ago2
+anchor3 = last_bar_index - ago3
+
+// Ancres fixes pour le tableau des dates (definies une seule fois)
+var int fixedAnchor1 = na
+var int fixedAnchor2 = na
+var int fixedAnchor3 = na
+if na(fixedAnchor1) and time >= timestamp({Y1}, {M1}, {D1}) - 86400000
     fixedAnchor1 := bar_index
-if time <= timestamp({Y2}, {M2}, {D2}) + 86400000
+if na(fixedAnchor2) and time >= timestamp({Y2}, {M2}, {D2}) - 86400000
     fixedAnchor2 := bar_index
-if time <= timestamp({Y3}, {M3}, {D3}) + 86400000
+if na(fixedAnchor3) and time >= timestamp({Y3}, {M3}, {D3}) - 86400000
     fixedAnchor3 := bar_index"""
     else:
         anchor_block = f"""\
 // ============================================
-// 2. ANCRES (mode compatibilité)
+// 2. ANCRES
 // ============================================
-var int fixedAnchor1 = last_bar_index - {A1}
-var int fixedAnchor2 = last_bar_index - {A2}
-var int fixedAnchor3 = last_bar_index - {A3}"""
+ago1 = input.int({A1}, "Offset cycle long (barres)", group="Cycle long")
+ago2 = input.int({A2}, "Offset cycle moyen (barres)", group="Cycle moyen")
+ago3 = input.int({A3}, "Offset cycle court (barres)", group="Cycle court")
+
+anchor1 = last_bar_index - ago1
+anchor2 = last_bar_index - ago2
+anchor3 = last_bar_index - ago3
+
+var int fixedAnchor1 = na
+var int fixedAnchor2 = na
+var int fixedAnchor3 = na
+if na(fixedAnchor1)
+    fixedAnchor1 := last_bar_index - {A1}
+if na(fixedAnchor2)
+    fixedAnchor2 := last_bar_index - {A2}
+if na(fixedAnchor3)
+    fixedAnchor3 := last_bar_index - {A3}"""
 
     return f"""\
 //@version=6
@@ -69,9 +93,9 @@ gainLookbackYears = input.int(5, "Periode comptee (annees)", minval=1, maxval=50
 // ============================================
 // 3. CALCUL DES SINUSOIDES
 // ============================================
-sine1 = math.sin(2*math.pi*(bar_index - fixedAnchor1)/len1)
-sine2 = math.sin(2*math.pi*(bar_index - fixedAnchor2)/len2)
-sine3 = math.sin(2*math.pi*(bar_index - fixedAnchor3)/len3)
+sine1 = math.sin(2*math.pi*(bar_index - anchor1)/len1)
+sine2 = math.sin(2*math.pi*(bar_index - anchor2)/len2)
+sine3 = math.sin(2*math.pi*(bar_index - anchor3)/len3)
 
 plot(sine1, "Cycle long",  col1, 2)
 plot(sine2, "Cycle moyen", col2, 2)
@@ -112,7 +136,7 @@ phase2 = f_phase(sine2, sine2[1])
 phase3 = f_phase(sine3, sine3[1])
 
 // ============================================
-// 4. ZONES DE FOND
+// 5. ZONES DE FOND
 // ============================================
 bullish1 = sine1 > sine1[1]
 bullish2 = sine2 > sine2[1]
@@ -126,7 +150,7 @@ bgZone = allBullish ? color.new(color.green, 80) : allBearish ? color.new(color.
 bgcolor(bgZone)
 
 // ============================================
-// 5. RENDEMENT PAR PERIODE VERTE/ROUGE + STOCKAGE POUR LE TABLEAU DE GAINS
+// 6. RENDEMENT PAR PERIODE VERTE/ROUGE
 // ============================================
 zoneState = allBullish ? 1 : allBearish ? -1 : 0
 
@@ -174,7 +198,7 @@ if zoneState != 0 and not na(zoneStartClose)
     liveLabel := label.new(midBarLive, labYLive, str.tostring(liveRet, "#.##") + "%", style=labStyleLive, color=color.new(labColLive, 0), textcolor=color.white, size=size.normal)
 
 // ============================================
-// 6. TABLEAU RECAPITULATIF (+ GAINS VERT/ROUGE)
+// 7. TABLEAU RECAPITULATIF (+ GAINS VERT/ROUGE)
 // ============================================
 if barstate.islast
     tblCols = showGainColumn ? 4 : 2
@@ -227,7 +251,7 @@ if barstate.islast
         table.cell(t, 3, 1, str.tostring(sumRed, "#.##") + "%\\n(" + str.tostring(nRed) + ")", text_color=color.red, text_size=size.small)
 
 // ============================================
-// 7. ALERTES - ALIGNEMENT DES 3 CYCLES (J-3)
+// 8. ALERTES - ALIGNEMENT DES 3 CYCLES (J-3)
 // ============================================
 lookahead = 3
 
@@ -236,15 +260,15 @@ f_bullAt(_anchor, _len, _k) =>
     sPrev = math.sin(2*math.pi*(bar_index + _k - 1 - _anchor)/_len)
     sNow > sPrev
 
-bull1_0 = f_bullAt(fixedAnchor1, len1, 0)
-bull2_0 = f_bullAt(fixedAnchor2, len2, 0)
-bull3_0 = f_bullAt(fixedAnchor3, len3, 0)
+bull1_0 = f_bullAt(anchor1, len1, 0)
+bull2_0 = f_bullAt(anchor2, len2, 0)
+bull3_0 = f_bullAt(anchor3, len3, 0)
 allBull_0 = bull1_0 and bull2_0 and bull3_0
 allBear_0 = (not bull1_0) and (not bull2_0) and (not bull3_0)
 
-bull1_k = f_bullAt(fixedAnchor1, len1, lookahead)
-bull2_k = f_bullAt(fixedAnchor2, len2, lookahead)
-bull3_k = f_bullAt(fixedAnchor3, len3, lookahead)
+bull1_k = f_bullAt(anchor1, len1, lookahead)
+bull2_k = f_bullAt(anchor2, len2, lookahead)
+bull3_k = f_bullAt(anchor3, len3, lookahead)
 allBull_k = bull1_k and bull2_k and bull3_k
 allBear_k = (not bull1_k) and (not bull2_k) and (not bull3_k)
 
@@ -272,21 +296,39 @@ def _generate_two_cycles(ticker: str, periods: List[int], agos: List[int],
         (Y1, M1, D1), (Y2, M2, D2) = anchor_dates
         anchor_block = f"""\
 // ============================================
-// 2. ANCRES FIXES (générées par Python — ne pas modifier)
+// 2. ANCRES
 // ============================================
-var int fixedAnchor1 = 0
-var int fixedAnchor2 = 0
-if time <= timestamp({Y1}, {M1}, {D1}) + 86400000
+ago1 = input.int({A1}, "Offset cycle long (barres)", group="Cycle long")
+ago2 = input.int({A2}, "Offset cycle court (barres)", group="Cycle court")
+
+// Ancres glissantes pour les courbes (identique au comportement original)
+anchor1 = last_bar_index - ago1
+anchor2 = last_bar_index - ago2
+
+// Ancres fixes pour le tableau des dates (definies une seule fois)
+var int fixedAnchor1 = na
+var int fixedAnchor2 = na
+if na(fixedAnchor1) and time >= timestamp({Y1}, {M1}, {D1}) - 86400000
     fixedAnchor1 := bar_index
-if time <= timestamp({Y2}, {M2}, {D2}) + 86400000
+if na(fixedAnchor2) and time >= timestamp({Y2}, {M2}, {D2}) - 86400000
     fixedAnchor2 := bar_index"""
     else:
         anchor_block = f"""\
 // ============================================
-// 2. ANCRES (mode compatibilité — sans dates fixes)
+// 2. ANCRES
 // ============================================
-var int fixedAnchor1 = last_bar_index - {A1}
-var int fixedAnchor2 = last_bar_index - {A2}"""
+ago1 = input.int({A1}, "Offset cycle long (barres)", group="Cycle long")
+ago2 = input.int({A2}, "Offset cycle court (barres)", group="Cycle court")
+
+anchor1 = last_bar_index - ago1
+anchor2 = last_bar_index - ago2
+
+var int fixedAnchor1 = na
+var int fixedAnchor2 = na
+if na(fixedAnchor1)
+    fixedAnchor1 := last_bar_index - {A1}
+if na(fixedAnchor2)
+    fixedAnchor2 := last_bar_index - {A2}"""
 
     return f"""\
 //@version=6
@@ -309,8 +351,8 @@ gainLookbackYears = input.int(5, "Periode comptee (annees)", minval=1, maxval=50
 // ============================================
 // 3. CALCUL DES SINUSOIDES
 // ============================================
-sine1 = math.sin(2*math.pi*(bar_index - fixedAnchor1)/len1)
-sine2 = math.sin(2*math.pi*(bar_index - fixedAnchor2)/len2)
+sine1 = math.sin(2*math.pi*(bar_index - anchor1)/len1)
+sine2 = math.sin(2*math.pi*(bar_index - anchor2)/len2)
 
 plot(sine1, "Cycle long",  col1, 2)
 plot(sine2, "Cycle court", col2, 2)
@@ -342,7 +384,7 @@ f_nextExtreme(_len, _anchor) =>
     icon + " " + str.format_time(futureTime, "dd MMM")
 
 // ============================================
-// 4. ZONES DE FOND
+// 5. ZONES DE FOND
 // ============================================
 bullish1 = sine1 > sine1[1]
 bullish2 = sine2 > sine2[1]
@@ -354,7 +396,7 @@ bgZone = allBullish ? color.new(color.green, 80) : allBearish ? color.new(color.
 bgcolor(bgZone)
 
 // ============================================
-// 5. RENDEMENT PAR PERIODE VERTE/ROUGE
+// 6. RENDEMENT PAR PERIODE VERTE/ROUGE
 // ============================================
 zoneState = allBullish ? 1 : allBearish ? -1 : 0
 
@@ -399,7 +441,7 @@ if zoneState != 0 and not na(zoneStartClose)
     liveLabel := label.new(midBarLive, labYLive, str.tostring(liveRet, "#.##") + "%", style=labStyleLive, color=color.new(labColLive, 0), textcolor=color.white, size=size.normal)
 
 // ============================================
-// 6. TABLEAU RECAPITULATIF
+// 7. TABLEAU RECAPITULATIF
 // ============================================
 if barstate.islast
     tblCols = showGainColumn ? 4 : 2
@@ -444,7 +486,7 @@ if barstate.islast
         table.cell(t, 3, 1, str.tostring(sumRed,   "#.##") + "%\\n(" + str.tostring(nRed)   + ")", text_color=color.red,   text_size=size.small)
 
 // ============================================
-// 7. ALERTES (J-3)
+// 8. ALERTES (J-3)
 // ============================================
 lookahead = 3
 
@@ -453,13 +495,13 @@ f_bullAt(_anchor, _len, _k) =>
     sPrev = math.sin(2*math.pi*(bar_index + _k - 1 - _anchor)/_len)
     sNow > sPrev
 
-bull1_0 = f_bullAt(fixedAnchor1, len1, 0)
-bull2_0 = f_bullAt(fixedAnchor2, len2, 0)
+bull1_0 = f_bullAt(anchor1, len1, 0)
+bull2_0 = f_bullAt(anchor2, len2, 0)
 allBull_0 = bull1_0 and bull2_0
 allBear_0 = (not bull1_0) and (not bull2_0)
 
-bull1_k = f_bullAt(fixedAnchor1, len1, lookahead)
-bull2_k = f_bullAt(fixedAnchor2, len2, lookahead)
+bull1_k = f_bullAt(anchor1, len1, lookahead)
+bull2_k = f_bullAt(anchor2, len2, lookahead)
 allBull_k = bull1_k and bull2_k
 allBear_k = (not bull1_k) and (not bull2_k)
 
@@ -480,17 +522,29 @@ def _generate_single_cycle(ticker: str, period: int, ago: int,
         Y1, M1, D1 = anchor_date
         anchor_block = f"""\
 // ============================================
-// 2. ANCRE FIXE (générée par Python — ne pas modifier)
+// 2. ANCRE
 // ============================================
-var int fixedAnchor1 = 0
-if time <= timestamp({Y1}, {M1}, {D1}) + 86400000
+ago1 = input.int({ago}, "Offset cycle (barres)")
+
+// Ancre glissante pour la courbe
+anchor1 = last_bar_index - ago1
+
+// Ancre fixe pour le tableau des dates (definie une seule fois)
+var int fixedAnchor1 = na
+if na(fixedAnchor1) and time >= timestamp({Y1}, {M1}, {D1}) - 86400000
     fixedAnchor1 := bar_index"""
     else:
         anchor_block = f"""\
 // ============================================
-// 2. ANCRE (mode compatibilité)
+// 2. ANCRE
 // ============================================
-var int fixedAnchor1 = last_bar_index - {ago}"""
+ago1 = input.int({ago}, "Offset cycle (barres)")
+
+anchor1 = last_bar_index - ago1
+
+var int fixedAnchor1 = na
+if na(fixedAnchor1)
+    fixedAnchor1 := last_bar_index - {ago}"""
 
     return f"""\
 //@version=6
@@ -510,7 +564,7 @@ gainLookbackYears = input.int(5, "Periode comptee (annees)", minval=1, maxval=50
 // ============================================
 // 3. CALCUL DE LA SINUSOIDE
 // ============================================
-sine1 = math.sin(2*math.pi*(bar_index - fixedAnchor1)/len1)
+sine1 = math.sin(2*math.pi*(bar_index - anchor1)/len1)
 
 plot(sine1, "Cycle", col1, 2)
 
@@ -541,14 +595,14 @@ f_nextExtreme(_len, _anchor) =>
     icon + " " + str.format_time(futureTime, "dd MMM")
 
 // ============================================
-// 4. ZONES DE FOND
+// 5. ZONES DE FOND
 // ============================================
 bullish1 = sine1 > sine1[1]
 bgZone = bullish1 ? color.new(color.green, 80) : color.new(color.red, 80)
 bgcolor(bgZone)
 
 // ============================================
-// 5. RENDEMENT PAR PERIODE VERTE/ROUGE
+// 6. RENDEMENT PAR PERIODE VERTE/ROUGE
 // ============================================
 zoneState = bullish1 ? 1 : -1
 
@@ -589,7 +643,7 @@ if not na(zoneStartClose)
     liveLabel := label.new(midBarLive, labYLive, str.tostring(liveRet, "#.##") + "%", style=labStyleLive, color=color.new(labColLive, 0), textcolor=color.white, size=size.normal)
 
 // ============================================
-// 6. TABLEAU RECAPITULATIF
+// 7. TABLEAU RECAPITULATIF
 // ============================================
 if barstate.islast
     tblCols = showGainColumn ? 4 : 2
@@ -629,7 +683,7 @@ if barstate.islast
         table.cell(t, 3, 1, str.tostring(sumRed,   "#.##") + "%\\n(" + str.tostring(nRed)   + ")", text_color=color.red,   text_size=size.small)
 
 // ============================================
-// 7. ALERTES (J-3)
+// 8. ALERTES (J-3)
 // ============================================
 lookahead = 3
 
@@ -638,8 +692,8 @@ f_bullAt(_anchor, _len, _k) =>
     sPrev = math.sin(2*math.pi*(bar_index + _k - 1 - _anchor)/_len)
     sNow > sPrev
 
-bull1_0 = f_bullAt(fixedAnchor1, len1, 0)
-bull1_k = f_bullAt(fixedAnchor1, len1, lookahead)
+bull1_0 = f_bullAt(anchor1, len1, 0)
+bull1_k = f_bullAt(anchor1, len1, lookahead)
 
 alertcondition((not bull1_0) and bull1_k, title="J-3 : debut phase HAUSSIERE", message="Phase HAUSSIERE du cycle dans 3 jours")
 alertcondition(bull1_0 and (not bull1_k),  title="J-3 : fin phase HAUSSIERE",  message="Fin de la phase HAUSSIERE du cycle dans 3 jours")
@@ -657,8 +711,8 @@ def generate_pinescript(
     """Generate Pine Script for 1, 2 or 3 cycles.
 
     anchor_times: list of Unix timestamps in milliseconds for the rising zero-crossing
-    of each cycle's sine wave. When provided, anchors are fixed and dates in the
-    'Prochain' table count down correctly as new bars are added.
+    of each cycle's sine wave. When provided, a separate fixed anchor is used for the
+    date table so projected dates stay stable as new bars arrive.
     """
     def _ts_to_ymd(ts_ms: int) -> tuple:
         import datetime
