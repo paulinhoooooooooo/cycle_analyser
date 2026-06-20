@@ -11,18 +11,149 @@ def _compute_ago(A: float, B: float, T: float, N: int) -> int:
     return int(round(ago))
 
 
+def _generate_single_cycle(ticker: str, period: int, ago: int) -> str:
+    """Pine Script v6 for a single cycle."""
+    return (
+        '//@version=6\n'
+        '// Généré automatiquement par Analyseur de Cycles de Marché\n'
+        '// Actif : ' + ticker + ' | Cycle : ' + str(period) + ' barres\n'
+        'indicator("Cycle ' + str(period) + 'b — ' + ticker + '", overlay=true, max_labels_count=500)\n'
+        '\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        '// PARAMÈTRES\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        'len1 = input.int(' + str(period) + ', "Longueur du cycle", minval=2)\n'
+        'ago1 = input.int(' + str(ago) + ',  "Phase (ago)", minval=0)\n'
+        'col1 = input.color(color.new(#58a6ff, 0), "Couleur oscillateur")\n'
+        '\n'
+        'grpD = "Affichage"\n'
+        'showGreenBg = input.bool(true, "Zone haussière (fond vert)",  group=grpD)\n'
+        'showRedBg   = input.bool(true, "Zone baissière (fond rouge)", group=grpD)\n'
+        'showLabels  = input.bool(true, "Labels rendement par zone",   group=grpD)\n'
+        'showTable   = input.bool(true, "Tableau récapitulatif",       group=grpD)\n'
+        '\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        '// SINUS\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        'anchor1 = last_bar_index - ago1\n'
+        's1      = math.sin(2 * math.pi * (bar_index - anchor1) / len1)\n'
+        '\n'
+        'bull1 = ta.change(s1) > 0\n'
+        'bear1 = not bull1\n'
+        '\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        '// PROCHAIN EXTRÊME\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        'f_nextExtreme(l, a) =>\n'
+        '    anc = last_bar_index - a\n'
+        '    p   = math.fmod(float(bar_index - anc), float(l))\n'
+        '    p  := p < 0.0 ? p + float(l) : p\n'
+        '    q   = float(l) / 4.0\n'
+        '    p < q        ? math.round(q - p)              :\n'
+        '     p < 3.0 * q ? math.round(3.0 * q - p)       :\n'
+        '                   math.round(float(l) + q - p)\n'
+        '\n'
+        'nextExt1 = f_nextExtreme(len1, ago1)\n'
+        '\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        '// FOND DE ZONES\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        'bgcolor(showGreenBg and bull1 ? color.new(#238636, 85) : na, title="Zone haussière")\n'
+        'bgcolor(showRedBg   and bear1 ? color.new(#da3633, 85) : na, title="Zone baissière")\n'
+        '\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        '// SUIVI DES RENDEMENTS\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        'var float cumGreen = 0.0\n'
+        'var float cumRed   = 0.0\n'
+        'var float zOpen    = na\n'
+        'var bool  wasGreen = false\n'
+        'var bool  wasRed   = false\n'
+        '\n'
+        'if bull1 and not bull1[1]\n'
+        '    zOpen    := close\n'
+        '    wasGreen := true\n'
+        '    wasRed   := false\n'
+        '\n'
+        'if not bull1 and bull1[1] and wasGreen and not na(zOpen)\n'
+        '    zonePct = (close - zOpen) / zOpen * 100\n'
+        '    cumGreen += zonePct\n'
+        '    if showLabels\n'
+        '        label.new(bar_index, high * 1.001,\n'
+        '                  str.tostring(math.round(zonePct, 1)) + "%",\n'
+        '                  color=color.new(#238636, 20), textcolor=color.white,\n'
+        '                  style=label.style_label_down, size=size.tiny)\n'
+        '    wasGreen := false\n'
+        '    zOpen    := na\n'
+        '\n'
+        'if bear1 and not bear1[1]\n'
+        '    zOpen  := close\n'
+        '    wasRed  := true\n'
+        '    wasGreen := false\n'
+        '\n'
+        'if not bear1 and bear1[1] and wasRed and not na(zOpen)\n'
+        '    zonePct = (close - zOpen) / zOpen * 100\n'
+        '    cumRed += zonePct\n'
+        '    if showLabels\n'
+        '        label.new(bar_index, low * 0.999,\n'
+        '                  str.tostring(math.round(zonePct, 1)) + "%",\n'
+        '                  color=color.new(#da3633, 20), textcolor=color.white,\n'
+        '                  style=label.style_label_up, size=size.tiny)\n'
+        '    wasRed  := false\n'
+        '    zOpen   := na\n'
+        '\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        '// TABLEAU\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        'var table t = table.new(position.top_right, 3, 4,\n'
+        '             bgcolor=color.new(#161b22, 5),\n'
+        '             border_width=1, border_color=color.new(#30363d, 0),\n'
+        '             frame_width=1,  frame_color=color.new(#30363d, 0))\n'
+        '\n'
+        'if barstate.islast and showTable\n'
+        '    table.cell(t, 0, 0, "Cycle",       text_color=color.new(#c9d1d9, 0), bgcolor=color.new(#1c2128, 0), text_size=size.small)\n'
+        '    table.cell(t, 1, 0, "Long. / Ago", text_color=color.new(#c9d1d9, 0), bgcolor=color.new(#1c2128, 0), text_size=size.small)\n'
+        '    table.cell(t, 2, 0, "Phase",       text_color=color.new(#c9d1d9, 0), bgcolor=color.new(#1c2128, 0), text_size=size.small)\n'
+        '    table.cell(t, 0, 1, str.tostring(len1) + " barres", text_color=col1, text_size=size.small)\n'
+        '    table.cell(t, 1, 1, "ago=" + str.tostring(ago1), text_color=color.new(#c9d1d9, 0), text_size=size.small)\n'
+        '    table.cell(t, 2, 1, bull1 ? "▲ Haussier" : "▼ Baissier",\n'
+        '               text_color=bull1 ? color.new(#3fb950, 0) : color.new(#f85149, 0), text_size=size.small)\n'
+        '    table.cell(t, 0, 2, "Zones ↑ cumulé", text_color=color.new(#3fb950, 0), text_size=size.small)\n'
+        '    table.cell(t, 1, 2, str.tostring(math.round(cumGreen, 1)) + "%",\n'
+        '               text_color=color.new(#3fb950, 0), text_size=size.small)\n'
+        '    table.cell(t, 2, 2, "", text_color=color.new(#c9d1d9, 0), text_size=size.small)\n'
+        '    table.cell(t, 0, 3, "Zones ↓ cumulé", text_color=color.new(#f85149, 0), text_size=size.small)\n'
+        '    table.cell(t, 1, 3, str.tostring(math.round(cumRed, 1)) + "%",\n'
+        '               text_color=color.new(#f85149, 0), text_size=size.small)\n'
+        '    table.cell(t, 2, 3, "", text_color=color.new(#c9d1d9, 0), text_size=size.small)\n'
+        '\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        '// ALERTES\n'
+        '// ─────────────────────────────────────────────────────────────────────\n'
+        'alertcondition(bull1 and not bull1[1], "Cycle haussier — ' + ticker + '",\n'
+        '               "Début de phase haussière sur ' + ticker + ' (cycle ' + str(period) + 'b)")\n'
+        'alertcondition(bear1 and not bear1[1], "Cycle baissier — ' + ticker + '",\n'
+        '               "Début de phase baissière sur ' + ticker + ' (cycle ' + str(period) + 'b)")\n'
+        'alertcondition(nextExt1 <= 3, "J-3 retournement imminent — ' + ticker + '",\n'
+        '               "ATTENTION J-3 : retournement de cycle imminent sur ' + ticker + ' (' + str(period) + 'b)")\n'
+    )
+
+
 def generate_pinescript(
     ticker: str,
     periods: List[int],
     ago_values: List[int],
 ) -> str:
     """
-    Generate TradingView Pine Script v6 for 2 or 3 sine-based market cycles.
+    Generate TradingView Pine Script v6 for 1, 2 or 3 sine-based market cycles.
     ago_values[i] = computed phase offset for periods[i] (from _compute_ago).
     """
     n = len(periods)
-    if n < 2 or n > 3:
-        raise ValueError("Only 2 or 3 cycles are supported")
+    if n < 1 or n > 3:
+        raise ValueError("Only 1, 2 or 3 cycles are supported")
+
+    if n == 1:
+        return _generate_single_cycle(ticker, periods[0], ago_values[0])
 
     # Pre-compute string fragments to avoid quote conflicts inside f-strings
     labels = ["Long", "Moyen", "Court"] if n == 3 else ["Long", "Court"]

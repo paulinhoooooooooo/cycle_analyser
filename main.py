@@ -298,8 +298,8 @@ Exemples :
             console.print("[red]--pinescript : format invalide. Utilisez des entiers séparés par des virgules (ex: 81,21)[/red]")
             sys.exit(1)
 
-        if not (2 <= len(pine_periods) <= 3):
-            console.print("[red]--pinescript : indiquez 2 ou 3 cycles (ex: 81,21 ou 81,42,21)[/red]")
+        if not (1 <= len(pine_periods) <= 3):
+            console.print("[red]--pinescript : indiquez 1, 2 ou 3 cycles (ex: 165 ou 81,21 ou 81,42,21)[/red]")
             sys.exit(1)
 
         N = len(prices)
