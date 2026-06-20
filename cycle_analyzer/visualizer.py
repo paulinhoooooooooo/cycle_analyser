@@ -413,7 +413,7 @@ def plot_combination(
             mid = (zone.start + zone.end) / 2
             col = GREEN if zone.return_pct >= 0 else RED
             ax_price.text(mid, y_top, f"{zone.return_pct:+.1f}%",
-                          color=col, fontsize=5.0, ha="center", va="top",
+                          color=col, fontsize=6.0, ha="center", va="top",
                           zorder=5, rotation=90)
 
     # ── Shade bearish zones (red) ─────────────────────────────────────────
@@ -423,7 +423,7 @@ def plot_combination(
             mid = (zone.start + zone.end) / 2
             col = GREEN if zone.return_pct <= 0 else RED
             ax_price.text(mid, y_bot, f"S:{-zone.return_pct:+.1f}%",
-                          color=col, fontsize=5.0, ha="center", va="bottom",
+                          color=col, fontsize=6.0, ha="center", va="bottom",
                           zorder=5, rotation=90)
 
     periods_str = " + ".join(str(p) for p in combo.periods)
