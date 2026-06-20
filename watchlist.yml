@@ -16,3 +16,8 @@ alerts:
     cycles: "121,80"
     period: 5y
     interval: 1d
+    
+- ticker: MRNA
+    cycles: "86,26"
+    period: 5y
+    interval: 1d
