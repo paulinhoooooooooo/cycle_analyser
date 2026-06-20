@@ -407,7 +407,7 @@ def plot_combination(
         ax.plot(x, osc_norm, color=col, linewidth=1.5, zorder=3)
         ax.axhline(0, color=GRID, linewidth=1, zorder=2)
 
-        bull = np.gradient(osc) > 0
+        bull = get_bullish_mask(prices, cycle.period)
         ax.fill_between(x, osc_norm, 0, where=bull, color=GREEN, alpha=0.25, zorder=1)
         ax.fill_between(x, osc_norm, 0, where=~bull, color=RED, alpha=0.20, zorder=1)
 

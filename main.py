@@ -302,8 +302,16 @@ Exemples :
             console.print("[red]--pinescript : indiquez 1, 2 ou 3 cycles (ex: 165 ou 81,21 ou 81,42,21)[/red]")
             sys.exit(1)
 
+        import warnings as _warn
+        import matplotlib.pyplot as _plt
+        from cycle_analyzer.cycle_detector import (
+            CycleInfo as _CycleInfo, _phase_state as _phase_st,
+        )
+        from cycle_analyzer.combination_analyzer import get_custom_combination as _gcc
+        from cycle_analyzer.visualizer import plot_combination as _plot_combo, plot_single_cycle as _plot_single
+
         N = len(prices)
-        detrended_g, _ = _detrend_log(prices)
+        detrended_g, trend_g = _detrend_log(prices)
 
         console.print()
         ago_values = []
@@ -332,10 +340,40 @@ Exemples :
         out_pine = Path(f"cycles_{ticker}_{'_'.join(str(p) for p in pine_periods)}.pine")
         out_pine.write_text(script, encoding="utf-8")
 
+        # ── Generate comparison chart using IDENTICAL periods/phases as the Pine Script ──
+        synth_cycles = []
+        t_arr = np.arange(N, dtype=float)
+        for sp, A_s, B_s, amp_s, psi, ago in coeff_table:
+            state_s, osc_s, dir_s = _phase_st(A_s, B_s, float(sp), N - 1)
+            osc_arr = np.exp(trend_g) * (
+                1 + A_s * np.cos(2 * np.pi * t_arr / sp)
+                + B_s * np.sin(2 * np.pi * t_arr / sp)
+            )
+            synth_cycles.append(_CycleInfo(
+                period=sp, period_exact=float(sp),
+                amplitude=round(amp_s * prices[-1], 2), strength=1.0, stability=0.0,
+                phase_state=state_s, current_value=osc_s, current_direction=dir_s,
+                oscillator=osc_arr, r_squared=0.0, amplitude_log=amp_s,
+                coeff_a=A_s, coeff_b=B_s,
+            ))
+
+        out_chart = Path(f"cycles_{ticker}_{'_'.join(str(p) for p in pine_periods)}.png")
+        with _warn.catch_warnings():
+            _warn.simplefilter("ignore")
+            if len(synth_cycles) == 1:
+                fig = _plot_single(prices, dates, synth_cycles[0], ticker)
+            else:
+                combo = _gcc(prices, synth_cycles)
+                fig = _plot_combo(prices, dates, combo, ticker)
+            fig.savefig(out_chart, dpi=130, bbox_inches="tight", facecolor="#0d1117")
+        _plt.close(fig)
+
         console.print(Panel(
-            f"[bold green]Script Pine sauvegardé :[/bold green] {out_pine.resolve()}\n\n"
+            f"[bold green]Script Pine sauvegardé :[/bold green] {out_pine.resolve()}\n"
+            f"[bold green]Graphique comparatif  :[/bold green] {out_chart.resolve()}\n\n"
             "[dim]Ouvrez ce fichier, sélectionnez tout (Ctrl+A) et copiez (Ctrl+C),\n"
-            "puis collez dans TradingView → Pine Editor → Nouveau script.[/dim]",
+            "puis collez dans TradingView → Pine Editor → Nouveau script.\n"
+            "Le graphique utilise exactement les mêmes paramètres que le script Pine.[/dim]",
             border_style="green", expand=False,
         ))
 
@@ -350,9 +388,11 @@ Exemples :
                 ps_cmd = f'Set-Clipboard -Value (Get-Content -Path "{out_pine.resolve()}" -Raw)'
                 _sp.run(["powershell", "-Command", ps_cmd], check=False)
                 console.print("[dim]✓ Copié dans le presse-papiers (Ctrl+V pour coller)[/dim]")
+                _sp.Popen(["explorer", str(out_chart.resolve())])
             elif _sys == "Darwin":
                 _sp.Popen(["open", str(out_pine)])
                 _sp.run(["pbcopy"], input=script.encode("utf-8"), check=False)
+                _sp.Popen(["open", str(out_chart)])
                 console.print("[dim]✓ Fichier ouvert et copié dans le presse-papiers[/dim]")
         except Exception:
             pass
