@@ -369,10 +369,10 @@ def main() -> None:
     app.add_handler(CommandHandler("start",     handle_prochains))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Job quotidien d'alerte proactive — 07h30 UTC (09h30 Paris été / 08h30 hiver)
+    # Job quotidien d'alerte proactive — 19h00 UTC (21h00 Paris été / 20h00 hiver)
     app.job_queue.run_daily(
         check_and_send_alerts,
-        time=_dt.time(7, 30, 0, tzinfo=_dt.timezone.utc),
+        time=_dt.time(19, 0, 0, tzinfo=_dt.timezone.utc),
     )
 
     print("Bot démarré. Envoyez /prochains dans Telegram pour voir les cycles.")
