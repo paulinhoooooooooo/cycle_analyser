@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
 """
 Bot Telegram interactif — Cycles de marché
-Répond à tout message (ou /prochains) avec les prochains événements cycliques
-pour tous les tickers de watchlist.yml.
+
+Fonctions :
+  • Répond à /prochains (ou tout message) avec les prochains événements cycliques
+  • Envoie automatiquement une alerte quotidienne (07h30 UTC) quand un événement
+    cyclique tombe dans la fenêtre lookaheadBars définie dans watchlist.yml
 
 Déploiement : Railway (Procfile: worker: python bot.py)
-Variables d'environnement requises : TELEGRAM_TOKEN, TELEGRAM_CHAT_ID (optionnel)
+Variables d'environnement requises :
+  TELEGRAM_TOKEN   — token du bot BotFather
+  TELEGRAM_CHAT_ID — ID du chat/canal qui recevra les alertes proactives
 """
 
 from __future__ import annotations
 
-import asyncio
+import datetime as _dt
+import json
 import math
 import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
-from typing import List, NamedTuple, Optional, Tuple
+from typing import List, NamedTuple, Optional, Set, Tuple
 
 import numpy as np
 import yaml
@@ -30,14 +36,20 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-MAX_LOOKAHEAD = 300  # barres max pour chercher le prochain événement (~1 an de trading)
+TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+MAX_LOOKAHEAD    = 300   # barres max pour /prochains (~1 an de trading)
 
+# Fichier de déduplication des alertes déjà envoyées
+_SENT_FILE = Path("alerts_sent.json")
+
+
+# ── Helpers partagés ──────────────────────────────────────────────────────────
 
 class CycleEvent(NamedTuple):
     ticker: str
     periods_str: str
-    event_type: str   # "HAUSSIER_DEBUT" | "HAUSSIER_FIN" | "BAISSIER_DEBUT" | "BAISSIER_FIN"
+    event_type: str   # HAUSSIER_DEBUT | HAUSSIER_FIN | BAISSIER_DEBUT | BAISSIER_FIN
     bars_away: int
     est_date: Optional[date]
 
@@ -66,29 +78,18 @@ def _next_trading_date(from_date: date, bars: int) -> date:
     added = 0
     while added < bars:
         d += timedelta(days=1)
-        if d.weekday() < 5:  # lundi–vendredi
+        if d.weekday() < 5:
             added += 1
     return d
 
 
-def get_events_for_ticker(
-    ticker: str,
+def _build_cycles_from_data(
+    prices: np.ndarray,
+    dates_idx,
     periods: List[int],
-    period: str,
-    interval: str,
-) -> List[CycleEvent]:
-    """Retourne les 4 prochains événements cycliques pour ce ticker."""
-    try:
-        data = fetch_data(ticker, period=period, interval=interval)
-    except Exception as exc:
-        print(f"  ⚠ Erreur fetch {ticker} : {exc}")
-        return []
-
-    prices = get_close_prices(data)
-    dates = get_dates(data)
+) -> Tuple[List[CycleInfo], float, date]:
     N = len(prices)
     detrended, _ = _detrend_log(prices)
-
     cycles: List[CycleInfo] = []
     for p in periods:
         A, B, amp = _fit_sine(detrended, float(p))
@@ -100,33 +101,9 @@ def get_events_for_ticker(
             oscillator=np.array([]), r_squared=0.0, amplitude_log=amp,
             coeff_a=A, coeff_b=B,
         ))
-
     t_last = float(N - 1)
-    last_date = dates[-1].date() if hasattr(dates[-1], "date") else date.today()
-    periods_str = " + ".join(str(p) for p in periods)
-
-    events: List[CycleEvent] = []
-
-    for k in range(1, MAX_LOOKAHEAD + 1):
-        bull_before, bear_before = _state_at(cycles, t_last + k - 1)
-        bull_after, bear_after = _state_at(cycles, t_last + k)
-
-        est = _next_trading_date(last_date, k)
-
-        if not bull_before and bull_after:
-            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", k, est))
-        if bull_before and not bull_after:
-            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_FIN", k, est))
-        if not bear_before and bear_after:
-            events.append(CycleEvent(ticker, periods_str, "BAISSIER_DEBUT", k, est))
-        if bear_before and not bear_after:
-            events.append(CycleEvent(ticker, periods_str, "BAISSIER_FIN", k, est))
-
-        if len(events) >= 2:
-            break
-
-    events.sort(key=lambda e: e.bars_away)
-    return events
+    last_date = dates_idx[-1].date() if hasattr(dates_idx[-1], "date") else date.today()
+    return cycles, t_last, last_date
 
 
 def _event_line(e: CycleEvent) -> str:
@@ -142,13 +119,115 @@ def _event_line(e: CycleEvent) -> str:
         "BAISSIER_DEBUT": "Début alignement BAISSIER",
         "BAISSIER_FIN":   "Fin alignement BAISSIER",
     }
-    icon = icons.get(e.event_type, "⚪")
+    icon  = icons.get(e.event_type, "⚪")
     label = labels.get(e.event_type, e.event_type)
-    date_str = e.est_date.strftime("%d/%m/%Y") if e.est_date else "?"
-    bar_word = "barre" if e.bars_away == 1 else "barres"
+    date_str   = e.est_date.strftime("%d/%m/%Y") if e.est_date else "?"
+    bar_word   = "barre" if e.bars_away == 1 else "barres"
     periods_detail = " | ".join(f"{p}j" for p in e.periods_str.replace("b", "").split(" + "))
-    return f"{icon} {label} dans <b>{e.bars_away} {bar_word}</b> (~{date_str}) — cycles : {periods_detail}"
+    return (
+        f"{icon} {label} dans <b>{e.bars_away} {bar_word}</b> "
+        f"(~{date_str}) — cycles : {periods_detail}"
+    )
 
+
+# ── Recherche d'événements ────────────────────────────────────────────────────
+
+def get_events_for_ticker(
+    ticker: str,
+    periods: List[int],
+    period: str,
+    interval: str,
+) -> List[CycleEvent]:
+    """Retourne les 2 prochains événements cycliques pour ce ticker (commande /prochains)."""
+    try:
+        data = fetch_data(ticker, period=period, interval=interval)
+    except Exception as exc:
+        print(f"  ⚠ Erreur fetch {ticker} : {exc}")
+        return []
+
+    prices    = get_close_prices(data)
+    dates_idx = get_dates(data)
+    cycles, t_last, last_date = _build_cycles_from_data(prices, dates_idx, periods)
+    periods_str = " + ".join(str(p) for p in periods)
+    events: List[CycleEvent] = []
+
+    for k in range(1, MAX_LOOKAHEAD + 1):
+        bull_before, bear_before = _state_at(cycles, t_last + k - 1)
+        bull_after,  bear_after  = _state_at(cycles, t_last + k)
+        est = _next_trading_date(last_date, k)
+
+        if not bull_before and bull_after:
+            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", k, est))
+        if bull_before and not bull_after:
+            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_FIN",   k, est))
+        if not bear_before and bear_after:
+            events.append(CycleEvent(ticker, periods_str, "BAISSIER_DEBUT", k, est))
+        if bear_before and not bear_after:
+            events.append(CycleEvent(ticker, periods_str, "BAISSIER_FIN",   k, est))
+
+        if len(events) >= 2:
+            break
+
+    events.sort(key=lambda e: e.bars_away)
+    return events
+
+
+def get_imminent_events(
+    ticker: str,
+    periods: List[int],
+    period: str,
+    interval: str,
+    lookahead: int,
+) -> List[CycleEvent]:
+    """Retourne tous les événements dans les `lookahead` prochaines barres (pour les alertes auto)."""
+    try:
+        data = fetch_data(ticker, period=period, interval=interval)
+    except Exception as exc:
+        print(f"  ⚠ Erreur fetch {ticker} : {exc}")
+        return []
+
+    prices    = get_close_prices(data)
+    dates_idx = get_dates(data)
+    cycles, t_last, last_date = _build_cycles_from_data(prices, dates_idx, periods)
+    periods_str = " + ".join(str(p) for p in periods)
+    events: List[CycleEvent] = []
+
+    for k in range(1, lookahead + 1):
+        bull_before, bear_before = _state_at(cycles, t_last + k - 1)
+        bull_after,  bear_after  = _state_at(cycles, t_last + k)
+        est = _next_trading_date(last_date, k)
+
+        if not bull_before and bull_after:
+            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", k, est))
+        if bull_before and not bull_after:
+            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_FIN",   k, est))
+        if not bear_before and bear_after:
+            events.append(CycleEvent(ticker, periods_str, "BAISSIER_DEBUT", k, est))
+        if bear_before and not bear_after:
+            events.append(CycleEvent(ticker, periods_str, "BAISSIER_FIN",   k, est))
+
+    return events
+
+
+# ── Déduplication des alertes ─────────────────────────────────────────────────
+
+def _load_sent() -> Set[Tuple]:
+    if not _SENT_FILE.exists():
+        return set()
+    try:
+        return {tuple(x) for x in json.loads(_SENT_FILE.read_text())}
+    except Exception:
+        return set()
+
+
+def _save_sent(sent: Set[Tuple]) -> None:
+    try:
+        _SENT_FILE.write_text(json.dumps(list(sent)))
+    except Exception as exc:
+        print(f"[alertes] Impossible de sauvegarder alerts_sent.json : {exc}")
+
+
+# ── Commande /prochains ───────────────────────────────────────────────────────
 
 def build_report(config: dict) -> str:
     alerts_list = config.get("alerts", [])
@@ -156,19 +235,18 @@ def build_report(config: dict) -> str:
         return "Aucun ticker dans watchlist.yml."
 
     lines = ["<b>📊 Prochains événements cycliques</b>\n"]
-
     for entry in alerts_list:
-        ticker = entry["ticker"].upper()
+        ticker  = entry["ticker"].upper()
         periods = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
-        period = entry.get("period", "5y")
+        period  = entry.get("period", "5y")
         interval = entry.get("interval", "1d")
 
-        events = get_events_for_ticker(ticker, periods, period, interval)
+        events      = get_events_for_ticker(ticker, periods, period, interval)
         periods_str = " + ".join(str(p) for p in periods)
         lines.append(f"<b>{ticker}</b> (cycles {periods_str}b)")
 
         if not events:
-            lines.append("  ⚠ Aucun événement trouvé dans les 60 prochaines barres.")
+            lines.append("  ⚠ Aucun événement trouvé dans les 300 prochaines barres.")
         else:
             for e in events[:2]:
                 lines.append(f"  {_event_line(e)}")
@@ -201,15 +279,101 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await handle_prochains(update, context)
 
 
+# ── Alertes proactives quotidiennes ───────────────────────────────────────────
+
+async def check_and_send_alerts(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Job quotidien (07h30 UTC). Pour chaque ticker de watchlist.yml, si un événement
+    cyclique tombe dans les lookaheadBars prochaines barres, envoie une alerte Telegram.
+    Un même événement (ticker + type + date estimée) n'est jamais notifié deux fois.
+    """
+    if not TELEGRAM_CHAT_ID:
+        print("[alertes] TELEGRAM_CHAT_ID non défini — alertes proactives désactivées.")
+        return
+
+    config_path = Path("watchlist.yml")
+    if not config_path.exists():
+        print("[alertes] watchlist.yml introuvable.")
+        return
+
+    try:
+        with config_path.open(encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+    except Exception as exc:
+        print(f"[alertes] Erreur lecture watchlist.yml : {exc}")
+        return
+
+    alerts_list = config.get("alerts", [])
+    lookahead   = int(config.get("lookaheadBars", 3))
+    sent        = _load_sent()
+    seen_now: Set[Tuple] = set()
+    alert_lines: List[str] = []
+
+    for entry in alerts_list:
+        ticker   = entry["ticker"].upper()
+        periods  = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
+        period   = entry.get("period", "5y")
+        interval = entry.get("interval", "1d")
+
+        events = get_imminent_events(ticker, periods, period, interval, lookahead)
+        for e in events:
+            key = (ticker, e.event_type, str(e.est_date))
+            seen_now.add(key)
+            if key in sent:
+                continue  # déjà notifié
+
+            periods_str = " + ".join(str(p) for p in periods)
+            if not alert_lines:
+                alert_lines.append(
+                    f"<b>🔔 Alerte cyclique — événement(s) dans ≤ {lookahead} barres</b>\n"
+                )
+            alert_lines.append(f"<b>{ticker}</b> (cycles {periods_str}b)")
+            alert_lines.append(f"  {_event_line(e)}")
+            alert_lines.append("")
+
+    # Mettre à jour le fichier de déduplication
+    # On garde seulement les clés encore «visibles» + les nouvelles
+    _save_sent(sent | seen_now)
+
+    if alert_lines:
+        message = "\n".join(alert_lines).strip()
+        try:
+            await context.bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=message,
+                parse_mode="HTML",
+            )
+            print(f"[alertes] ✓ Alerte envoyée ({len(alert_lines)//3} événement(s))")
+        except Exception as exc:
+            print(f"[alertes] ✗ Erreur envoi Telegram : {exc}")
+    else:
+        print(f"[alertes] Aucun nouvel événement dans les {lookahead} prochaines barres.")
+
+
+# ── Point d'entrée ────────────────────────────────────────────────────────────
+
 def main() -> None:
     if not TELEGRAM_TOKEN:
         print("❌ TELEGRAM_TOKEN non défini — arrêt.")
         sys.exit(1)
 
+    if not TELEGRAM_CHAT_ID:
+        print("⚠  TELEGRAM_CHAT_ID non défini — alertes proactives désactivées.")
+    else:
+        print(f"✓  Alertes proactives activées → chat_id={TELEGRAM_CHAT_ID} (07h30 UTC quotidien)")
+
     app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+    # Commandes interactives
     app.add_handler(CommandHandler("prochains", handle_prochains))
-    app.add_handler(CommandHandler("start", handle_prochains))
+    app.add_handler(CommandHandler("start",     handle_prochains))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Job quotidien d'alerte proactive — 07h30 UTC (09h30 Paris été / 08h30 hiver)
+    app.job_queue.run_daily(
+        check_and_send_alerts,
+        time=_dt.time(7, 30, 0, tzinfo=_dt.timezone.utc),
+    )
 
     print("Bot démarré. Envoyez /prochains dans Telegram pour voir les cycles.")
     app.run_polling(drop_pending_updates=True)
