@@ -10,7 +10,9 @@ Fonctions :
 Déploiement : Railway (Procfile: worker: python bot.py)
 Variables d'environnement requises :
   TELEGRAM_TOKEN   — token du bot BotFather
-  TELEGRAM_CHAT_ID — ID du chat/canal qui recevra les alertes proactives
+
+Le chat ID cible pour les alertes proactives est mémorisé automatiquement
+dans chat_id.txt dès le premier /prochains — aucune variable supplémentaire.
 """
 
 from __future__ import annotations
@@ -37,11 +39,28 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 
 
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 MAX_LOOKAHEAD    = 300   # barres max pour /prochains (~1 an de trading)
 
-# Fichier de déduplication des alertes déjà envoyées
-_SENT_FILE = Path("alerts_sent.json")
+_SENT_FILE    = Path("alerts_sent.json")
+_CHAT_ID_FILE = Path("chat_id.txt")
+
+
+def _get_chat_id() -> str:
+    """Retourne le chat ID cible : variable d'env TELEGRAM_CHAT_ID en priorité,
+    sinon le fichier chat_id.txt écrit automatiquement au premier /prochains."""
+    env = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    if env:
+        return env
+    if _CHAT_ID_FILE.exists():
+        return _CHAT_ID_FILE.read_text().strip()
+    return ""
+
+
+def _save_chat_id(chat_id: str) -> None:
+    try:
+        _CHAT_ID_FILE.write_text(str(chat_id))
+    except Exception as exc:
+        print(f"[chat_id] Impossible de sauvegarder : {exc}")
 
 
 # ── Helpers partagés ──────────────────────────────────────────────────────────
@@ -256,6 +275,8 @@ def build_report(config: dict) -> str:
 
 
 async def handle_prochains(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Mémorise le chat ID pour les alertes proactives
+    _save_chat_id(str(update.effective_chat.id))
     await update.message.reply_text("⏳ Calcul en cours…")
     config_path = Path("watchlist.yml")
     if not config_path.exists():
@@ -287,8 +308,9 @@ async def check_and_send_alerts(context: ContextTypes.DEFAULT_TYPE) -> None:
     cyclique tombe dans les lookaheadBars prochaines barres, envoie une alerte Telegram.
     Un même événement (ticker + type + date estimée) n'est jamais notifié deux fois.
     """
-    if not TELEGRAM_CHAT_ID:
-        print("[alertes] TELEGRAM_CHAT_ID non défini — alertes proactives désactivées.")
+    chat_id = _get_chat_id()
+    if not chat_id:
+        print("[alertes] Chat ID inconnu — envoie /prochains une fois pour l'enregistrer.")
         return
 
     config_path = Path("watchlist.yml")
@@ -339,7 +361,7 @@ async def check_and_send_alerts(context: ContextTypes.DEFAULT_TYPE) -> None:
         message = "\n".join(alert_lines).strip()
         try:
             await context.bot.send_message(
-                chat_id=TELEGRAM_CHAT_ID,
+                chat_id=chat_id,
                 text=message,
                 parse_mode="HTML",
             )
@@ -357,10 +379,11 @@ def main() -> None:
         print("❌ TELEGRAM_TOKEN non défini — arrêt.")
         sys.exit(1)
 
-    if not TELEGRAM_CHAT_ID:
-        print("⚠  TELEGRAM_CHAT_ID non défini — alertes proactives désactivées.")
+    stored = _get_chat_id()
+    if stored:
+        print(f"✓  Alertes proactives activées → chat_id={stored} (19h00 UTC)")
     else:
-        print(f"✓  Alertes proactives activées → chat_id={TELEGRAM_CHAT_ID} (07h30 UTC quotidien)")
+        print("⚠  Chat ID non encore connu — envoie /prochains une fois pour l'enregistrer.")
 
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
