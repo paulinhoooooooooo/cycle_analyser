@@ -212,8 +212,7 @@ def _next_combo_alignments(
 
 
 def _future_date_str(dates: pd.DatetimeIndex, bars_ahead: int) -> str:
-    avg_days = (dates[-1] - dates[0]).days / max(len(dates) - 1, 1)
-    future = dates[-1] + pd.Timedelta(days=int(round(bars_ahead * avg_days)))
+    future = dates[-1] + pd.offsets.BDay(bars_ahead)
     return future.strftime("%d/%m/%Y")
 
 
