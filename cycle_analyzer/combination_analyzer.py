@@ -243,9 +243,30 @@ def analyze_combinations(
             if cr is not None:
                 size_results.append(cr)
         size_results.sort(key=lambda r: r.total_return_pct, reverse=True)
-        results[size] = size_results[:top_n_per_size]
+
+        # Greedy diversity filter: skip combos too similar to already-selected ones.
+        # Two combos are "too similar" when ALL their sorted periods are within
+        # 10% of each other (→ nearly identical charts).
+        selected: List[CombinationResult] = []
+        for r in size_results:
+            if not any(_combos_too_similar(r.periods, s.periods) for s in selected):
+                selected.append(r)
+            if len(selected) >= top_n_per_size:
+                break
+        results[size] = selected
 
     return results
+
+
+def _combos_too_similar(periods_a: List[int], periods_b: List[int]) -> bool:
+    """True when all sorted period pairs are within 10% of each other."""
+    if len(periods_a) != len(periods_b):
+        return False
+    for pa, pb in zip(sorted(periods_a), sorted(periods_b)):
+        threshold = max(5, int(0.10 * max(pa, pb)))
+        if abs(pa - pb) >= threshold:
+            return False
+    return True
 
 
 def get_custom_combination(prices: np.ndarray, selected_cycles: List[CycleInfo]) -> CombinationResult:
