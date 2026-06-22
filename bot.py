@@ -173,16 +173,19 @@ def get_events_for_ticker(
     for k in range(1, MAX_LOOKAHEAD + 1):
         bull_before, bear_before = _state_at(cycles, t_last + k - 1)
         bull_after,  bear_after  = _state_at(cycles, t_last + k)
-        est = _next_trading_date(last_date, k)
+        # Use k-1: report the peak/trough bar (last bar of previous state),
+        # which matches the oscillator annotation on the chart.
+        bar = max(1, k - 1)
+        est = _next_trading_date(last_date, bar)
 
         if not bull_before and bull_after:
-            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", k, est))
+            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", bar, est))
         if bull_before and not bull_after:
-            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_FIN",   k, est))
+            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_FIN",   bar, est))
         if not bear_before and bear_after:
-            events.append(CycleEvent(ticker, periods_str, "BAISSIER_DEBUT", k, est))
+            events.append(CycleEvent(ticker, periods_str, "BAISSIER_DEBUT", bar, est))
         if bear_before and not bear_after:
-            events.append(CycleEvent(ticker, periods_str, "BAISSIER_FIN",   k, est))
+            events.append(CycleEvent(ticker, periods_str, "BAISSIER_FIN",   bar, est))
 
         if len(events) >= 2:
             break
@@ -214,16 +217,17 @@ def get_imminent_events(
     for k in range(1, lookahead + 1):
         bull_before, bear_before = _state_at(cycles, t_last + k - 1)
         bull_after,  bear_after  = _state_at(cycles, t_last + k)
-        est = _next_trading_date(last_date, k)
+        bar = max(1, k - 1)
+        est = _next_trading_date(last_date, bar)
 
         if not bull_before and bull_after:
-            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", k, est))
+            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", bar, est))
         if bull_before and not bull_after:
-            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_FIN",   k, est))
+            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_FIN",   bar, est))
         if not bear_before and bear_after:
-            events.append(CycleEvent(ticker, periods_str, "BAISSIER_DEBUT", k, est))
+            events.append(CycleEvent(ticker, periods_str, "BAISSIER_DEBUT", bar, est))
         if bear_before and not bear_after:
-            events.append(CycleEvent(ticker, periods_str, "BAISSIER_FIN",   k, est))
+            events.append(CycleEvent(ticker, periods_str, "BAISSIER_FIN",   bar, est))
 
     return events
 

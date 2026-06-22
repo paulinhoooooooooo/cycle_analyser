@@ -201,9 +201,9 @@ def _next_combo_alignments(
     for k in range(1, max_bars + 1):
         b, e = state_at(t_last + k)
         if b and not prev_bull and next_bull is None:
-            next_bull = k
+            next_bull = max(1, k - 1)  # trough bar = last bearish bar before bullish
         if e and not prev_bear and next_bear is None:
-            next_bear = k
+            next_bear = max(1, k - 1)  # peak bar = last bullish bar before bearish
         prev_bull, prev_bear = b, e
         if next_bull is not None and next_bear is not None:
             break
@@ -212,7 +212,8 @@ def _next_combo_alignments(
 
 
 def _future_date_str(dates: pd.DatetimeIndex, bars_ahead: int) -> str:
-    future = dates[-1] + pd.offsets.BDay(bars_ahead)
+    avg_days = (dates[-1] - dates[0]).days / max(len(dates) - 1, 1)
+    future = dates[-1] + pd.Timedelta(days=int(round(bars_ahead * avg_days)))
     return future.strftime("%d/%m/%Y")
 
 
