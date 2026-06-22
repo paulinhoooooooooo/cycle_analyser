@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
-from .cycle_detector import CycleInfo, get_bullish_mask
+from .cycle_detector import CycleInfo, get_bullish_mask, _detrend_log, _fit_sine, _phase_state
 
 
 @dataclass
@@ -167,6 +167,45 @@ def _build_combo(prices: np.ndarray, combo: List[CycleInfo]) -> CombinationResul
     )
 
 
+def _return_scan_pool(prices: np.ndarray, top_n: int = 20) -> List[CycleInfo]:
+    """
+    Brute-force scan: test every integer period from 10 to N//2,
+    rank by single-cycle compound return, return top_n as CycleInfo.
+    This ensures good cycles that the FFT misses still enter the pool.
+    """
+    N = len(prices)
+    max_p = N // 2
+    detrended, _ = _detrend_log(prices)
+    candidates: List[Tuple[float, int]] = []  # (compound_return, period)
+
+    for p in range(10, max_p + 1):
+        mask = get_bullish_mask(prices, p)
+        bull_pct = mask.mean()
+        if bull_pct < 0.05 or bull_pct > 0.95:
+            continue
+        zones = _compute_zones(prices, mask)
+        if not zones:
+            continue
+        cr = _compound_return(zones)
+        candidates.append((cr, p))
+
+    candidates.sort(reverse=True)
+    result = []
+    for cr, p in candidates[:top_n]:
+        A, B, amp = _fit_sine(detrended, float(p))
+        if amp < 1e-10:
+            continue
+        state, osc_val, direction = _phase_state(A, B, float(p), N - 1)
+        result.append(CycleInfo(
+            period=p, period_exact=float(p),
+            amplitude=round(amp * prices[-1], 2), strength=0.0, stability=0.0,
+            phase_state=state, current_value=osc_val, current_direction=direction,
+            oscillator=np.array([]), r_squared=0.0, amplitude_log=amp,
+            coeff_a=A, coeff_b=B,
+        ))
+    return result
+
+
 def analyze_combinations(
     prices: np.ndarray,
     cycles: List[CycleInfo],
@@ -176,9 +215,9 @@ def analyze_combinations(
     Returns the top combinations grouped by size:
       {2: [top3 pairs], 3: [top3 triples]}
     Both ranked by total compounded return on bullish zones.
+    Pool = top 20 FFT cycles  +  top 20 return-scan cycles (deduplicated).
     """
-    # Deduplicate pool by integer period (two cycles rounding to the same period
-    # can appear when FFT bins are close — keep the one with higher stability)
+    # FFT-detected cycles (deduplicated by integer period)
     seen_periods: set = set()
     pool = []
     for c in cycles[:25]:
@@ -187,6 +226,13 @@ def analyze_combinations(
             seen_periods.add(c.period)
         if len(pool) >= 20:
             break
+
+    # Supplement with brute-force return scan so strong periods not caught by FFT
+    # (e.g. 86, 26 on MRNA) are always tested
+    for c in _return_scan_pool(prices, top_n=20):
+        if c.period not in seen_periods:
+            pool.append(c)
+            seen_periods.add(c.period)
 
     results: Dict[int, List[CombinationResult]] = {2: [], 3: []}
 
