@@ -38,6 +38,77 @@ def _cycle_row_html(c: CycleInfo) -> str:
     </tr>"""
 
 
+def _summary_html(
+    top_combos: List[CombinationResult],
+    top_singles: List[tuple],          # List of (CycleInfo, CombinationResult)
+) -> str:
+    combo_rows = ""
+    for i, c in enumerate(top_combos[:3], 1):
+        bull_s = f"{c.total_return_pct:+.1f}%"
+        bull_c = f"{c.compound_return_pct:+.1f}%"
+        short_s = f"{-c.bearish_total_return_pct:+.1f}%"
+        short_c = f"{c.short_compound_return_pct:+.1f}%"
+        bull_col = "color:var(--green)" if c.compound_return_pct >= 0 else "color:var(--red)"
+        short_col2 = "color:var(--green)" if c.short_compound_return_pct >= 0 else "color:var(--red)"
+        combo_rows += f"""
+        <tr>
+          <td><span class="rank-badge">#{i}</span></td>
+          <td style="font-weight:600;color:#fff">{c.label}</td>
+          <td><span class="ret-val" data-simple="{bull_s}" data-compound="{bull_c}" style="{bull_col}">{bull_s}</span></td>
+          <td><span class="ret-val" data-simple="{short_s}" data-compound="{short_c}" style="{short_col2}">{short_s}</span></td>
+          <td style="color:var(--text2)">{c.hit_rate:.0f}%</td>
+          <td style="color:var(--text2)">{c.bearish_hit_rate:.0f}%</td>
+        </tr>"""
+
+    single_rows = ""
+    for ci, sc in top_singles[:3]:
+        label, bg, fg = _PHASE_BADGE.get(ci.phase_state, ("—", "#21262d", "#c9d1d9"))
+        bull_s = f"{sc.total_return_pct:+.1f}%"
+        bull_c = f"{sc.compound_return_pct:+.1f}%"
+        short_s = f"{-sc.bearish_total_return_pct:+.1f}%"
+        short_c = f"{sc.short_compound_return_pct:+.1f}%"
+        bull_col = "color:var(--green)" if sc.compound_return_pct >= 0 else "color:var(--red)"
+        short_col2 = "color:var(--green)" if sc.short_compound_return_pct >= 0 else "color:var(--red)"
+        single_rows += f"""
+        <tr>
+          <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{ci.period}b</span></td>
+          <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{label}</span></td>
+          <td><span class="ret-val" data-simple="{bull_s}" data-compound="{bull_c}" style="{bull_col}">{bull_s}</span></td>
+          <td><span class="ret-val" data-simple="{short_s}" data-compound="{short_c}" style="{short_col2}">{short_s}</span></td>
+          <td style="color:var(--text2)">{sc.hit_rate:.0f}%</td>
+          <td style="color:var(--text2)">{sc.bearish_hit_rate:.0f}%</td>
+        </tr>"""
+
+    return f"""
+<h2 style="margin-top:4px">Résumé — Meilleurs signaux</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+  <div class="card" style="padding:14px">
+    <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;
+                color:var(--text2);margin-bottom:10px">Top 3 Combinaisons de cycles</div>
+    <table>
+      <thead><tr>
+        <th>#</th><th>Combinaison</th>
+        <th>Long ↑</th><th>Short ↓</th>
+        <th>% réus. L</th><th>% réus. S</th>
+      </tr></thead>
+      <tbody>{combo_rows}</tbody>
+    </table>
+  </div>
+  <div class="card" style="padding:14px">
+    <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;
+                color:var(--text2);margin-bottom:10px">Top 3 Cycles simples</div>
+    <table>
+      <thead><tr>
+        <th>Cycle</th><th>Phase</th>
+        <th>Long ↑</th><th>Short ↓</th>
+        <th>% réus. L</th><th>% réus. S</th>
+      </tr></thead>
+      <tbody>{single_rows}</tbody>
+    </table>
+  </div>
+</div>"""
+
+
 def _combo_card_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
     zones_html = "".join(
         '<span class="zone-chip {cls}">{ret:+.1f}%</span>'.format(
@@ -114,6 +185,11 @@ def generate_report(
     top3_combos = [get_custom_combination(prices, [c]) for c in top3]
     imgs_top3 = [fig_to_base64(plot_single_cycle(prices, dates, c, ticker)) for c in top3]
 
+    # ── Summary data: top 3 combos by compound return + top 3 single cycles ──
+    sorted_combos = sorted(all_combos, key=lambda r: r.compound_return_pct, reverse=True)
+    sorted_singles = sorted(zip(top3, top3_combos), key=lambda x: x[1].compound_return_pct, reverse=True)
+    summary = _summary_html(sorted_combos[:3], list(sorted_singles)[:3])
+
     imgs_combos = {id(combo): fig_to_base64(plot_combination(prices, dates, combo, ticker))
                    for combo in all_combos}
 
@@ -150,8 +226,8 @@ def generate_report(
             html_out += _combo_card_html(combo, img, rank)
         return html_out
 
-    combos_html = _section_html(combinations.get(2, []), "Top 3 — Combinaisons de 2 cycles")
-    combos_html += _section_html(combinations.get(3, []), "Top 3 — Combinaisons de 3 cycles")
+    combos_html = _section_html(combinations.get(2, []), "Top 5 — Combinaisons de 2 cycles")
+    combos_html += _section_html(combinations.get(3, []), "Top 5 — Combinaisons de 3 cycles")
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)
 
@@ -287,6 +363,8 @@ function switchTab(mode, btn) {{
     <div class="kpi-val green">{cycles[0].stability if cycles else 0:.2f}</div>
   </div>
 </div>
+
+{summary}
 
 <h2>Spectre de Puissance</h2>
 <div class="card">
