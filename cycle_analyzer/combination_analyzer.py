@@ -181,11 +181,11 @@ def analyze_combinations(
     # can appear when FFT bins are close — keep the one with higher stability)
     seen_periods: set = set()
     pool = []
-    for c in cycles[:15]:
+    for c in cycles[:25]:
         if c.period not in seen_periods:
             pool.append(c)
             seen_periods.add(c.period)
-        if len(pool) >= 12:
+        if len(pool) >= 20:
             break
 
     results: Dict[int, List[CombinationResult]] = {2: [], 3: []}
