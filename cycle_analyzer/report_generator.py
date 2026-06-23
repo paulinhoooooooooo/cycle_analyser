@@ -22,6 +22,21 @@ _PHASE_BADGE = {
     "trough": ("Creux", "#9e6a03", "#d29922"),
 }
 
+_COMBO_PHASE = {
+    "bullish": ("▲ Haussier", "#238636", "#3fb950"),
+    "bearish": ("▼ Baissier", "#da3633", "#f85149"),
+    "neutral": ("— Neutre",   "#21262d", "#8b949e"),
+}
+
+
+def _combo_phase(combo: CombinationResult) -> tuple:
+    """Return (label, bg, fg) for the current phase of a combination."""
+    if len(combo.bullish_mask) and combo.bullish_mask[-1]:
+        return _COMBO_PHASE["bullish"]
+    if len(combo.bearish_mask) and combo.bearish_mask[-1]:
+        return _COMBO_PHASE["bearish"]
+    return _COMBO_PHASE["neutral"]
+
 
 def _cycle_row_html(c: CycleInfo) -> str:
     label, bg, fg = _PHASE_BADGE.get(c.phase_state, ("—", "#21262d", "#c9d1d9"))
@@ -50,10 +65,12 @@ def _summary_html(
         short_c = f"{c.short_compound_return_pct:+.1f}%"
         bull_col = "color:var(--green)" if c.compound_return_pct >= 0 else "color:var(--red)"
         short_col2 = "color:var(--green)" if c.short_compound_return_pct >= 0 else "color:var(--red)"
+        ph_label, ph_bg, ph_fg = _combo_phase(c)
         combo_rows += f"""
         <tr>
           <td><span class="rank-badge">#{i}</span></td>
           <td style="font-weight:600;color:#fff">{c.label}</td>
+          <td><span class="badge" style="background:{ph_bg}22;border:1px solid {ph_fg};color:{ph_fg}">{ph_label}</span></td>
           <td><span class="ret-val" data-simple="{bull_s}" data-compound="{bull_c}" style="{bull_col}">{bull_s}</span></td>
           <td><span class="ret-val" data-simple="{short_s}" data-compound="{short_c}" style="{short_col2}">{short_s}</span></td>
           <td style="color:var(--text2)">{c.hit_rate:.0f}%</td>
@@ -87,7 +104,7 @@ def _summary_html(
                 color:var(--text2);margin-bottom:10px">Top 3 Combinaisons de cycles</div>
     <table>
       <thead><tr>
-        <th>#</th><th>Combinaison</th>
+        <th>#</th><th>Combinaison</th><th>Phase actuelle</th>
         <th>Long ↑</th><th>Short ↓</th>
         <th>% réus. L</th><th>% réus. S</th>
       </tr></thead>
@@ -134,6 +151,8 @@ def _combo_card_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
     short_c = f"{combo.short_compound_return_pct:+.1f}% ↓ short"
     short_col = "green" if short_total >= 0 else "red"
 
+    ph_label, ph_bg, ph_fg = _combo_phase(combo)
+
     short_section = ""
     if combo.bearish_zones:
         short_section = f"""
@@ -146,6 +165,7 @@ def _combo_card_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
       <div class="card-header">
         <span class="rank-badge">#{rank}</span>
         <span class="combo-title">Cycles : {combo.label}</span>
+        <span class="badge" style="background:{ph_bg}33;border:1px solid {ph_fg};color:{ph_fg};font-size:12px;padding:3px 10px">{ph_label}</span>
         <span class="stat-chip green ret-val" data-simple="{bull_s}" data-compound="{bull_c}">{bull_s}</span>
         <span class="stat-chip">{combo.hit_rate:.0f}% réussite long</span>
         <span class="stat-chip">{combo.n_zones} zones</span>
