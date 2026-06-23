@@ -244,8 +244,16 @@ def generate_report(
     price_first = prices[0]
     total_perf = (price_last - price_first) / price_first * 100
 
-    # Flatten for chart generation
+    # Flatten long and short combo lists (short may contain different combos than long)
     all_combos = combinations.get(2, []) + combinations.get(3, [])
+    short_combos = combinations.get("short_2", []) + combinations.get("short_3", [])
+    # Unique set for image generation (avoid rendering same combo twice)
+    seen_ids: set = set()
+    all_unique_combos: List[CombinationResult] = []
+    for c in all_combos + short_combos:
+        if id(c) not in seen_ids:
+            all_unique_combos.append(c)
+            seen_ids.add(id(c))
 
     # ── Build chart images ────────────────────────────────────────────────────
     img_spectrum = fig_to_base64(plot_power_spectrum(prices, cycles))
@@ -261,7 +269,7 @@ def generate_report(
     summary = _summary_html(sorted_combos[:3], list(sorted_singles)[:3])
 
     imgs_combos = {id(combo): fig_to_base64(plot_combination(prices, dates, combo, ticker))
-                   for combo in all_combos}
+                   for combo in all_unique_combos}
 
     # ── HTML ──────────────────────────────────────────────────────────────────
     top3_html = ""
@@ -299,13 +307,8 @@ def generate_report(
     combos_html = _section_html(combinations.get(2, []), "Top 3 — Combinaisons de 2 cycles")
     combos_html += _section_html(combinations.get(3, []), "Top 3 — Combinaisons de 3 cycles")
 
-    # ── Short-optimised section: re-rank ALL combos by short compound return ──
-    short_top: List[CombinationResult] = []
-    for r in sorted(all_combos, key=lambda r: r.short_compound_return_pct, reverse=True):
-        if not any(_combos_too_similar(r.periods, s.periods) for s in short_top):
-            short_top.append(r)
-        if len(short_top) >= 3:
-            break
+    # Short section uses independently computed short-ranked combos (different from long)
+    short_top = sorted(short_combos, key=lambda r: r.short_compound_return_pct, reverse=True)
     combos_html += _section_html(short_top, "Top 3 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)

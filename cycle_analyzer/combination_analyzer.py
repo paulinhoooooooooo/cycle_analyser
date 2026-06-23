@@ -210,12 +210,15 @@ def analyze_combinations(
     prices: np.ndarray,
     cycles: List[CycleInfo],
     top_n_per_size: int = 3,
-) -> Dict[int, List[CombinationResult]]:
+) -> Dict:
     """
-    Returns the top combinations grouped by size:
-      {2: [top3 pairs], 3: [top3 triples]}
-    Both ranked by total compounded return on bullish zones.
-    Pool = top 20 FFT cycles  +  top 20 return-scan cycles (deduplicated).
+    Returns combinations grouped by size, with separate long and short rankings:
+      {2: [top N long pairs], 3: [top N long triples],
+       "short_2": [top N short pairs], "short_3": [top N short triples]}
+    Long  ranked by compound return on bullish zones.
+    Short ranked by compound return when shorting bearish zones.
+    Both rankings are independent, computed over the full valid combo pool.
+    Pool = top 20 FFT cycles + top 20 return-scan cycles (deduplicated).
     """
     # FFT-detected cycles (deduplicated by integer period)
     seen_periods: set = set()
@@ -234,10 +237,10 @@ def analyze_combinations(
             pool.append(c)
             seen_periods.add(c.period)
 
-    results: Dict[int, List[CombinationResult]] = {2: [], 3: []}
+    results: Dict = {2: [], 3: [], "short_2": [], "short_3": []}
 
     for size in (2, 3):
-        size_results = []
+        all_valid: List[CombinationResult] = []
         for combo in itertools.combinations(pool, size):
             # Skip if any two cycles within the combo are too similar to each other
             periods = [c.period for c in combo]
@@ -248,19 +251,19 @@ def analyze_combinations(
                 continue
             cr = _build_combo(prices, list(combo))
             if cr is not None:
-                size_results.append(cr)
-        size_results.sort(key=lambda r: r.total_return_pct, reverse=True)
+                all_valid.append(cr)
 
-        # Greedy diversity filter: skip combos too similar to already-selected ones.
-        # Two combos are "too similar" when ALL their sorted periods are within
-        # 10% of each other (→ nearly identical charts).
-        selected: List[CombinationResult] = []
-        for r in size_results:
-            if not any(_combos_too_similar(r.periods, s.periods) for s in selected):
-                selected.append(r)
-            if len(selected) >= top_n_per_size:
-                break
-        results[size] = selected
+        def _top_n(combos: List[CombinationResult], key, n: int) -> List[CombinationResult]:
+            selected: List[CombinationResult] = []
+            for r in sorted(combos, key=key, reverse=True):
+                if not any(_combos_too_similar(r.periods, s.periods) for s in selected):
+                    selected.append(r)
+                if len(selected) >= n:
+                    break
+            return selected
+
+        results[size] = _top_n(all_valid, key=lambda r: r.total_return_pct, n=top_n_per_size)
+        results[f"short_{size}"] = _top_n(all_valid, key=lambda r: r.short_compound_return_pct, n=top_n_per_size)
 
     return results
 
