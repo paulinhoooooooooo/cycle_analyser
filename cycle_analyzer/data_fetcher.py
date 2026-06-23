@@ -12,7 +12,7 @@ _TICKER_ALIASES: dict = {
     "NDX": "^NDX", "NASDAQ": "^IXIC", "COMP": "^IXIC",
     # Dow Jones
     "DJI": "^DJI", "DOW": "^DJI", "DJIA": "^DJI",
-    # Other indices
+    # US indices
     "DAX": "^GDAXI", "GDAXI": "^GDAXI",
     "CAC": "^FCHI", "CAC40": "^FCHI", "FCHI": "^FCHI",
     "FTSE": "^FTSE",
@@ -20,6 +20,18 @@ _TICKER_ALIASES: dict = {
     "VIX": "^VIX",
     "RUT": "^RUT",
     "SOX": "^SOX",
+    # European indices (^ eaten by Windows CMD)
+    "STOXX50E": "^STOXX50E", "STOXX50": "^STOXX50E", "EUROSTOXX50": "^STOXX50E",
+    "STOXX600": "^STOXX", "STOXX": "^STOXX",
+    "AEX": "^AEX",
+    "BEL20": "^BFX", "BFX": "^BFX",
+    "IBEX": "^IBEX", "IBEX35": "^IBEX",
+    "SMI": "^SSMI", "SSMI": "^SSMI",
+    "MIB": "FTSEMIB.MI",
+    "OMX": "^OMXS30",
+    # Other
+    "HANGSENG": "^HSI", "HSI": "^HSI",
+    "ASX": "^AXJO", "ASX200": "^AXJO",
 }
 
 
