@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from .cycle_detector import CycleInfo
-from .combination_analyzer import CombinationResult, get_custom_combination
+from .combination_analyzer import CombinationResult, get_custom_combination, _combos_too_similar
 from .visualizer import (
     fig_to_base64,
     plot_single_cycle,
@@ -126,6 +126,56 @@ def _summary_html(
 </div>"""
 
 
+def _combo_card_short_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
+    """Card variant that highlights short performance (used in short-optimised section)."""
+    short_zones_html = "".join(
+        '<span class="zone-chip {cls}">{ret:+.1f}%</span>'.format(
+            cls="pos" if z.return_pct <= 0 else "neg", ret=-z.return_pct
+        )
+        for z in combo.bearish_zones[:12]
+    )
+    short_more = f" +{len(combo.bearish_zones)-12} zones" if len(combo.bearish_zones) > 12 else ""
+
+    zones_html = "".join(
+        '<span class="zone-chip {cls}">{ret:+.1f}%</span>'.format(
+            cls="pos" if z.return_pct >= 0 else "neg", ret=z.return_pct
+        )
+        for z in combo.zones[:8]
+    )
+    more = f" +{len(combo.zones)-8} zones" if len(combo.zones) > 8 else ""
+
+    short_total = -combo.bearish_total_return_pct
+    short_s = f"{short_total:+.1f}% ↓ short"
+    short_c = f"{combo.short_compound_return_pct:+.1f}% ↓ short"
+    bull_s = f"{combo.total_return_pct:+.1f}% ↑ long"
+    bull_c = f"{combo.compound_return_pct:+.1f}% ↑ long"
+    short_col = "green" if combo.short_compound_return_pct >= 0 else "red"
+    bull_col = "green" if combo.compound_return_pct >= 0 else "red"
+
+    ph_label, ph_bg, ph_fg = _combo_phase(combo)
+
+    return f"""
+    <div class="card" style="border-left:3px solid #f85149">
+      <div class="card-header">
+        <span class="rank-badge">#{rank}</span>
+        <span class="combo-title">Cycles : {combo.label}</span>
+        <span class="badge" style="background:{ph_bg}33;border:1px solid {ph_fg};color:{ph_fg};font-size:12px;padding:3px 10px">{ph_label}</span>
+        <span class="stat-chip {short_col} ret-val" data-simple="{short_s}" data-compound="{short_c}" style="font-size:13px;font-weight:700">{short_s}</span>
+        <span class="stat-chip red">{combo.bearish_hit_rate:.0f}% réussite short</span>
+        <span class="stat-chip">{len(combo.bearish_zones)} zones baissières</span>
+        <span class="stat-chip {bull_col} ret-val" data-simple="{bull_s}" data-compound="{bull_c}" style="opacity:.7">{bull_s}</span>
+        <span class="stat-chip" style="opacity:.7">{combo.hit_rate:.0f}% réussite long</span>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px">
+        Zones short (baissières) : {short_zones_html}{short_more}
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;opacity:.6">
+        Zones long (haussières) : {zones_html}{more}
+      </div>
+      <img src="data:image/png;base64,{img_b64}" class="chart-img" loading="lazy">
+    </div>"""
+
+
 def _combo_card_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
     zones_html = "".join(
         '<span class="zone-chip {cls}">{ret:+.1f}%</span>'.format(
@@ -239,15 +289,24 @@ def generate_report(
           <img src="data:image/png;base64,{img}" class="chart-img" loading="lazy">
         </div>"""
 
-    def _section_html(combo_list: List[CombinationResult], title: str) -> str:
+    def _section_html(combo_list: List[CombinationResult], title: str, short_mode: bool = False) -> str:
         html_out = f'<h2>{title}</h2>'
         for rank, combo in enumerate(combo_list, 1):
             img = imgs_combos.get(id(combo), "")
-            html_out += _combo_card_html(combo, img, rank)
+            html_out += (_combo_card_short_html if short_mode else _combo_card_html)(combo, img, rank)
         return html_out
 
     combos_html = _section_html(combinations.get(2, []), "Top 3 — Combinaisons de 2 cycles")
     combos_html += _section_html(combinations.get(3, []), "Top 3 — Combinaisons de 3 cycles")
+
+    # ── Short-optimised section: re-rank ALL combos by short compound return ──
+    short_top: List[CombinationResult] = []
+    for r in sorted(all_combos, key=lambda r: r.short_compound_return_pct, reverse=True):
+        if not any(_combos_too_similar(r.periods, s.periods) for s in short_top):
+            short_top.append(r)
+        if len(short_top) >= 3:
+            break
+    combos_html += _section_html(short_top, "Top 3 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)
 
