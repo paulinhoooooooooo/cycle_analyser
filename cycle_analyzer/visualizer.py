@@ -273,12 +273,11 @@ def plot_single_cycle(
                 ret = (prices[last_idx] - prices[start]) / prices[start] * 100
                 bull_simple += ret
                 bull_cmp *= 1 + ret / 100
-                if last_idx - start + 1 >= 3:
-                    mid = (start + last_idx) / 2
-                    col = GREEN if ret >= 0 else RED
-                    ax_price.text(mid, y_top, f"{ret:+.1f}%",
-                                  color=col, fontsize=5.0, ha="center", va="top",
-                                  zorder=5, rotation=90)
+                mid = (start + last_idx) / 2
+                col = GREEN if ret >= 0 else RED
+                ax_price.text(mid, y_top, f"{ret:+.1f}%",
+                              color=col, fontsize=5.0, ha="center", va="top",
+                              zorder=5, rotation=90)
                 bull_zone_idx += 1
         else:
             start = i
@@ -293,12 +292,11 @@ def plot_single_cycle(
                 bear_simple += ret
                 bear_cmp *= 1 + ret / 100
                 short_cmp *= 1 + (-ret) / 100
-                if last_idx - start + 1 >= 3:
-                    mid = (start + last_idx) / 2
-                    col = GREEN if ret <= 0 else RED
-                    ax_price.text(mid, y_bot, f"S:{-ret:+.1f}%",
-                                  color=col, fontsize=5.0, ha="center", va="bottom",
-                                  zorder=5, rotation=90)
+                mid = (start + last_idx) / 2
+                col = GREEN if ret <= 0 else RED
+                ax_price.text(mid, y_bot, f"S:{-ret:+.1f}%",
+                              color=col, fontsize=5.0, ha="center", va="bottom",
+                              zorder=5, rotation=90)
                 bear_zone_idx += 1
 
     bull_compound = (bull_cmp - 1) * 100
@@ -409,22 +407,20 @@ def plot_combination(
     # ── Shade bullish zones (green) ───────────────────────────────────────
     for zone in combo.zones:
         ax_price.axvspan(zone.start, zone.end, color=GREEN_FILL, alpha=0.22, zorder=1)
-        if zone.duration >= 3:
-            mid = (zone.start + zone.end) / 2
-            col = GREEN if zone.return_pct >= 0 else RED
-            ax_price.text(mid, y_top, f"{zone.return_pct:+.1f}%",
-                          color=col, fontsize=6.0, ha="center", va="top",
-                          zorder=5, rotation=90)
+        mid = (zone.start + zone.end) / 2
+        col = GREEN if zone.return_pct >= 0 else RED
+        ax_price.text(mid, y_top, f"{zone.return_pct:+.1f}%",
+                      color=col, fontsize=6.0, ha="center", va="top",
+                      zorder=5, rotation=90)
 
     # ── Shade bearish zones (red) ─────────────────────────────────────────
     for zone in combo.bearish_zones:
         ax_price.axvspan(zone.start, zone.end, color=RED_FILL, alpha=0.18, zorder=1)
-        if zone.duration >= 3:
-            mid = (zone.start + zone.end) / 2
-            col = GREEN if zone.return_pct <= 0 else RED
-            ax_price.text(mid, y_bot, f"S:{-zone.return_pct:+.1f}%",
-                          color=col, fontsize=6.0, ha="center", va="bottom",
-                          zorder=5, rotation=90)
+        mid = (zone.start + zone.end) / 2
+        col = GREEN if zone.return_pct <= 0 else RED
+        ax_price.text(mid, y_bot, f"S:{-zone.return_pct:+.1f}%",
+                      color=col, fontsize=6.0, ha="center", va="bottom",
+                      zorder=5, rotation=90)
 
     periods_str = " + ".join(str(p) for p in combo.periods)
     bear_str = (
