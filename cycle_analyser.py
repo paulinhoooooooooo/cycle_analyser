@@ -94,14 +94,14 @@ def print_combinations(combinations: dict) -> None:
 
 
 def _run_sl_simulation(console, prices, dates, combo, sl_pct: float, ticker: str,
-                       out_filename: str, no_browser: bool) -> None:
+                       out_filename: str, no_browser: bool, fixed: bool = False) -> None:
     """Generate the SL simulation chart and print a summary panel."""
     import warnings as _w
     import matplotlib.pyplot as _plt
-    from cycle_analyzer.combination_analyzer import simulate_sl_zones
+    from cycle_analyzer.combination_analyzer import simulate_sl_zones, simulate_sl_zones_fixed
     from cycle_analyzer.visualizer import plot_sl_simulation
 
-    sl_results = simulate_sl_zones(prices, combo.zones, sl_pct)
+    sl_results = (simulate_sl_zones_fixed if fixed else simulate_sl_zones)(prices, combo.zones, sl_pct)
     sl_compound = 1.0
     sl_simple = 0.0
     n_hits = 0
@@ -114,7 +114,8 @@ def _run_sl_simulation(console, prices, dates, combo, sl_pct: float, ticker: str
     sl_simple = round(sl_simple, 2)
     no_sl_simple = combo.total_return_pct
 
-    fig_sl = plot_sl_simulation(prices, dates, combo, sl_results, sl_pct, ticker)
+    sl_mode = "fixe" if fixed else "suiveur"
+    fig_sl = plot_sl_simulation(prices, dates, combo, sl_results, sl_pct, ticker, sl_mode=sl_mode)
     out_sl = Path(out_filename)
     with _w.catch_warnings():
         _w.simplefilter("ignore")
@@ -128,7 +129,7 @@ def _run_sl_simulation(console, prices, dates, combo, sl_pct: float, ticker: str
     diff_col_c = "green" if diff_c >= 0 else "red"
     diff_col_s = "green" if diff_s >= 0 else "red"
     console.print(Panel(
-        f"[bold cyan]Simulation Stop-Loss {sl_pct}%[/bold cyan]\n"
+        f"[bold cyan]Simulation Stop-Loss {sl_pct}% ({'fixe' if fixed else 'suiveur'})[/bold cyan]\n"
         f"  Avec SL  — composé : [{col_c}]{sl_total:+.1f}%[/{col_c}]   simple : [{col_s}]{sl_simple:+.1f}%[/{col_s}]\n"
         f"  Sans SL  — composé : {combo.compound_return_pct:+.1f}%   simple : {no_sl_simple:+.1f}%\n"
         f"  Différence composé : [{diff_col_c}]{diff_c:+.1f}%[/{diff_col_c}]   "
@@ -239,7 +240,14 @@ Exemples :
     parser.add_argument("--SL", type=float, default=None, metavar="PCT",
                         help="Simuler un stop-loss suiveur de X%% sur les zones haussières "
                              "(ex: --SL 5). Génère un graphique de comparaison avec/sans SL.")
+    parser.add_argument("--SLf", type=float, default=None, metavar="PCT",
+                        help="Simuler un stop-loss FIXE de X%% sous le prix d'entrée. "
+                             "Le SL ne bouge pas même si le prix monte (ex: --SLf 5).")
     args = parser.parse_args()
+    # Consolidate: if --SLf given, treat as --SL in fixed mode
+    _sl_fixed_mode = args.SLf is not None
+    if _sl_fixed_mode and args.SL is None:
+        args.SL = args.SLf
 
     print_banner()
 
@@ -333,7 +341,7 @@ Exemples :
         if args.SL is not None:
             _run_sl_simulation(console, prices, dates, combo, args.SL, ticker,
                                f"selection_{'_'.join(str(p) for p in sel_periods)}_SL{args.SL}.png",
-                               args.no_browser)
+                               args.no_browser, fixed=_sl_fixed_mode)
         else:
             out_select = Path(f"selection_{'_'.join(str(p) for p in sel_periods)}.png")
             fig = plot_combination(prices, dates, combo, ticker)
@@ -461,7 +469,7 @@ Exemples :
             ))
             _sl_out = Path(f"cycles_{ticker}_{'_'.join(str(p) for p in pine_periods)}_SL{args.SL}.png")
             _run_sl_simulation(console, prices, dates, _pine_combo, args.SL, ticker,
-                               str(_sl_out), args.no_browser)
+                               str(_sl_out), args.no_browser, fixed=_sl_fixed_mode)
         else:
             out_chart = Path(f"cycles_{ticker}_{'_'.join(str(p) for p in pine_periods)}.png")
             with _warn.catch_warnings():

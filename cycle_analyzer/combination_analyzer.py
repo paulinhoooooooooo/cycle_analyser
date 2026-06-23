@@ -382,3 +382,48 @@ def _simulate_sl_zone(prices: np.ndarray, zone: ZoneResult, sl_pct: float) -> SL
 def simulate_sl_zones(prices: np.ndarray, zones: List[ZoneResult], sl_pct: float) -> List[SLZoneResult]:
     """Simulate trailing SL on every bullish zone of a combination."""
     return [_simulate_sl_zone(prices, zone, sl_pct) for zone in zones]
+
+
+def _simulate_sl_zone_fixed(prices: np.ndarray, zone: ZoneResult, sl_pct: float) -> SLZoneResult:
+    """
+    Fixed stop-loss: SL is set once at entry × (1 - sl_pct/100) and NEVER moves,
+    regardless of how much the price rises.
+    """
+    zone_prices = prices[zone.start: zone.end + 1]
+    n = len(zone_prices)
+    if n < 2:
+        path = zone_prices[:1].copy() if n else np.array([])
+        return SLZoneResult(zone=zone, sl_return_pct=0.0, sl_hit=False,
+                            sl_exit_bar=zone.end, sl_path=path,
+                            original_return_pct=zone.return_pct)
+
+    entry = zone_prices[0]
+    sl = entry * (1.0 - sl_pct / 100.0)
+
+    sl_hit = False
+    exit_bar = zone.end
+    exit_ret = (zone_prices[-1] - entry) / entry * 100.0
+
+    for i in range(1, n):
+        price = float(zone_prices[i])
+        if price <= sl:
+            sl_hit = True
+            exit_bar = zone.start + i
+            exit_ret = (sl - entry) / entry * 100.0
+            break
+
+    sl_path = np.full(min(exit_bar - zone.start + 1, n), sl)
+
+    return SLZoneResult(
+        zone=zone,
+        sl_return_pct=round(exit_ret, 2),
+        sl_hit=sl_hit,
+        sl_exit_bar=exit_bar,
+        sl_path=sl_path,
+        original_return_pct=zone.return_pct,
+    )
+
+
+def simulate_sl_zones_fixed(prices: np.ndarray, zones: List[ZoneResult], sl_pct: float) -> List[SLZoneResult]:
+    """Simulate fixed SL on every bullish zone of a combination."""
+    return [_simulate_sl_zone_fixed(prices, zone, sl_pct) for zone in zones]

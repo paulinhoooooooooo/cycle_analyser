@@ -556,6 +556,7 @@ def plot_sl_simulation(
     sl_results: list,
     sl_pct: float,
     ticker: str = "",
+    sl_mode: str = "suiveur",
 ) -> plt.Figure:
     """
     Second chart: shows what the trailing SL strategy would have produced.
@@ -625,7 +626,7 @@ def plot_sl_simulation(
     no_sl_compound = combo.compound_return_pct
 
     ax.set_title(
-        f"{ticker} — Stop-Loss suiveur {sl_pct}%"
+        f"{ticker} — Stop-Loss {sl_mode} {sl_pct}%"
         f"  |  Avec SL : {sl_total:+.1f}% composé / {sl_simple:+.1f}% simple"
         f"  |  Sans SL : {no_sl_compound:+.1f}% composé / {no_sl_simple:+.1f}% simple"
         f"  |  {n_hits} SL déclenchés / {len(sl_results)} zones",
@@ -641,7 +642,7 @@ def plot_sl_simulation(
         mpatches.Patch(facecolor=ORANGE, alpha=0.5, edgecolor=ORANGE,
                        label="SL déclenché — chiffre orange = rendement réalisé"),
         Line2D([0], [0], color=ORANGE, linestyle="--", linewidth=1.0,
-               label=f"Niveau SL (pas de {sl_pct}%)"),
+               label=f"Niveau SL {'fixe' if sl_mode == 'fixe' else 'suiveur'} ({sl_pct}%)"),
         Line2D([0], [0], color="#aaaaaa", linestyle="none", marker="",
                label="(chiffre entre parenthèses = rendement sans SL)"),
     ]
