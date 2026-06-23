@@ -226,8 +226,8 @@ def generate_report(
             html_out += _combo_card_html(combo, img, rank)
         return html_out
 
-    combos_html = _section_html(combinations.get(2, []), "Top 5 — Combinaisons de 2 cycles")
-    combos_html += _section_html(combinations.get(3, []), "Top 5 — Combinaisons de 3 cycles")
+    combos_html = _section_html(combinations.get(2, []), "Top 3 — Combinaisons de 2 cycles")
+    combos_html += _section_html(combinations.get(3, []), "Top 3 — Combinaisons de 3 cycles")
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)
 
