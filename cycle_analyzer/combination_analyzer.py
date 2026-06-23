@@ -239,6 +239,13 @@ def analyze_combinations(
     for size in (2, 3):
         size_results = []
         for combo in itertools.combinations(pool, size):
+            # Skip if any two cycles within the combo are too similar to each other
+            periods = [c.period for c in combo]
+            if any(
+                _periods_too_close(pa, pb)
+                for pa, pb in itertools.combinations(periods, 2)
+            ):
+                continue
             cr = _build_combo(prices, list(combo))
             if cr is not None:
                 size_results.append(cr)
@@ -256,6 +263,11 @@ def analyze_combinations(
         results[size] = selected
 
     return results
+
+
+def _periods_too_close(p1: int, p2: int) -> bool:
+    """True if two periods within the same combo are within 10% of each other."""
+    return abs(p1 - p2) < max(5, int(0.10 * max(p1, p2)))
 
 
 def _combos_too_similar(periods_a: List[int], periods_b: List[int]) -> bool:
