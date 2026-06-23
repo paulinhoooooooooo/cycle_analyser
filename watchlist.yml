@@ -21,3 +21,9 @@ alerts:
     cycles: "86,26"
     period: 5y
     interval: 1d
+
+  - ticker: ADA
+    cycles: "286,164,85"
+    period: 5y
+    interval: 1d
+    
