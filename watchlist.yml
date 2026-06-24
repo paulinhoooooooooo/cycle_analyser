@@ -22,7 +22,7 @@ alerts:
     period: 5y
     interval: 1d
 
-  - ticker: ADA
+  - ticker: ADA-USD
     cycles: "286,164,85"
     period: 5y
     interval: 1d
