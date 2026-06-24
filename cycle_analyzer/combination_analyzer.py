@@ -102,6 +102,39 @@ def _short_compound_return(zones: List[ZoneResult]) -> float:
     return round((c - 1) * 100, 2)
 
 
+def compute_single_cycle_hit_rates(prices: np.ndarray, period: int) -> Tuple[float, float]:
+    """Return (hit_rate, short_hit_rate) as percentages for a single cycle."""
+    bullish = get_bullish_mask(prices, period)
+    N = len(prices)
+    bull_hits = bull_total = 0
+    bear_hits = bear_total = 0
+    i = 0
+    while i < N:
+        if bullish[i]:
+            start = i
+            while i < N and bullish[i]:
+                i += 1
+            last = i - 1
+            if last > start:
+                ret = (prices[last] - prices[start]) / prices[start]
+                bull_total += 1
+                if ret > 0:
+                    bull_hits += 1
+        else:
+            start = i
+            while i < N and not bullish[i]:
+                i += 1
+            last = i - 1
+            if last > start:
+                ret = (prices[last] - prices[start]) / prices[start]
+                bear_total += 1
+                if ret < 0:
+                    bear_hits += 1
+    hit_rate = (bull_hits / bull_total * 100) if bull_total > 0 else 0.0
+    short_hit_rate = (bear_hits / bear_total * 100) if bear_total > 0 else 0.0
+    return hit_rate, short_hit_rate
+
+
 def _short_hit_rate(zones: List[ZoneResult]) -> float:
     """% of zones where market fell (short was profitable)."""
     if not zones:

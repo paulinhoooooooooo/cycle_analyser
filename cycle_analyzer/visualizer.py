@@ -102,8 +102,8 @@ def plot_cycle_table(cycles: List[CycleInfo]) -> plt.Figure:
     fig.patch.set_facecolor(BG)
     ax.axis("off")
 
-    cols = ["#", "Longueur", "Amplitude", "Force", "Stabilité", "Phase"]
-    col_widths = [0.06, 0.18, 0.18, 0.14, 0.14, 0.14]
+    cols = ["#", "Longueur", "Amplitude", "Force", "Stabilité", "Phase", "Réussite ↑", "Short ↓"]
+    col_widths = [0.05, 0.14, 0.14, 0.11, 0.11, 0.11, 0.11, 0.11]
     col_x = [sum(col_widths[:i]) + 0.04 for i in range(len(col_widths))]
     header_y = 0.96
 
@@ -137,6 +137,8 @@ def plot_cycle_table(cycles: List[CycleInfo]) -> plt.Figure:
         ax.add_patch(badge_rect)
 
         stab_bold = c.stability >= 0.5
+        hit_col = GREEN if c.hit_rate >= 60 else (YELLOW if c.hit_rate >= 45 else RED)
+        short_col = GREEN if c.short_hit_rate >= 60 else (YELLOW if c.short_hit_rate >= 45 else RED)
         values = [
             str(c.rank),
             str(c.period),
@@ -144,10 +146,13 @@ def plot_cycle_table(cycles: List[CycleInfo]) -> plt.Figure:
             f"{c.strength:.2f}",
             f"{c.stability:.2f}",
             c.phase_state.capitalize(),
+            f"{c.hit_rate:.0f}%",
+            f"{c.short_hit_rate:.0f}%",
         ]
         colors_row = [TEXT, phase_col, TEXT, TEXT,
-                      GREEN if stab_bold else TEXT, phase_col]
-        weights = ["normal"] * 6
+                      GREEN if stab_bold else TEXT, phase_col,
+                      hit_col, short_col]
+        weights = ["normal"] * 8
         if stab_bold:
             weights[4] = "bold"
 
@@ -306,6 +311,7 @@ def plot_single_cycle(
         f"{ticker} — Cycle {cycle.period} barres  "
         f"| Amp: {cycle.amplitude:,.2f}  | Force: {cycle.strength:.2f}  "
         f"| Stabilité: {cycle.stability:.2f}  "
+        f"| Réussite ↑ {cycle.hit_rate:.0f}% / Short {cycle.short_hit_rate:.0f}%  "
         f"| ↑ {bull_simple:+.1f}% (Σ) / {bull_compound:+.1f}% (composé)"
         f"  | Short: {-bear_simple:+.1f}% (Σ) / {short_compound:+.1f}% (composé)",
         color=TEXT, fontsize=9, pad=6, loc="left",

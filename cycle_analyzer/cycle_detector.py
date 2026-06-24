@@ -23,6 +23,8 @@ class CycleInfo:
     coeff_a: float
     coeff_b: float
     rank: int = 0
+    hit_rate: float = 0.0        # % bullish zones where price went up
+    short_hit_rate: float = 0.0  # % bearish zones where price went down
 
 
 def _detrend_log(prices: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:

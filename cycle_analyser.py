@@ -255,7 +255,7 @@ Exemples :
     try:
         from cycle_analyzer.data_fetcher import fetch_data, get_ticker_info, get_close_prices, get_dates
         from cycle_analyzer.cycle_detector import detect_cycles
-        from cycle_analyzer.combination_analyzer import analyze_combinations
+        from cycle_analyzer.combination_analyzer import analyze_combinations, compute_single_cycle_hit_rates
         from cycle_analyzer.report_generator import generate_report
     except ImportError as e:
         console.print(f"[red]Erreur d'import : {e}[/red]")
@@ -524,6 +524,8 @@ Exemples :
             max_period=args.max_period,
             n_cycles=args.cycles,
         )
+        for c in cycles:
+            c.hit_rate, c.short_hit_rate = compute_single_cycle_hit_rates(prices, c.period)
         progress.update(t2, description=f"[green]✓[/green] {len(cycles)} cycles détectés")
         progress.stop_task(t2)
 
