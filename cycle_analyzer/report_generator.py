@@ -292,6 +292,7 @@ def generate_report(
             <span class="stat-chip green">Stab: {c.stability:.2f}</span>
             <span class="stat-chip green ret-val" data-simple="{bull_s}" data-compound="{bull_c}">{bull_s}</span>
             <span class="stat-chip {short_col} ret-val" data-simple="{bear_s}" data-compound="{bear_c}">{bear_s}</span>
+            <span class="stat-chip">{sc.hit_rate:.0f}% réussite long</span>
             <span class="stat-chip">{sc.bearish_hit_rate:.0f}% réussite short</span>
           </div>
           <img src="data:image/png;base64,{img}" class="chart-img" loading="lazy">
