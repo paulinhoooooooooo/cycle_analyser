@@ -200,11 +200,74 @@ def _build_combo(prices: np.ndarray, combo: List[CycleInfo]) -> CombinationResul
     )
 
 
-def _return_scan_pool(prices: np.ndarray, top_n: int = 20) -> List[CycleInfo]:
+# ── Catégories de longueur de cycle (en barres) ───────────────────────────────
+# Sert à diversifier les combinaisons affichées : sans ça, le classement par
+# rendement est monopolisé par les cycles très longs, et les cycles courts/moyens
+# (souvent plus exploitables) n'apparaissent jamais.
+_LEN_COURT_MAX = 60      # cycles COURTS  : <= 60 barres  (~3 mois en journalier)
+_LEN_MOYEN_MAX = 180     # cycles MOYENS  : 61-180 barres (~3-9 mois)
+                         # cycles LONGS   : > 180 barres
+_LENGTH_ORDER = ("court", "moyen", "long")
+
+
+def _length_bucket(period: int) -> str:
+    if period <= _LEN_COURT_MAX:
+        return "court"
+    if period <= _LEN_MOYEN_MAX:
+        return "moyen"
+    return "long"
+
+
+def _combo_bucket(combo: "CombinationResult") -> str:
+    """Catégorie d'une combinaison = celle de son cycle le plus long."""
+    return _length_bucket(max(combo.periods))
+
+
+def combo_length_label(combo: "CombinationResult") -> str:
+    """Libellé lisible de la catégorie de longueur d'une combinaison."""
+    return {"court": "Court", "moyen": "Moyen", "long": "Long"}[_combo_bucket(combo)]
+
+
+def pick_top_diverse(combos: List["CombinationResult"], key, n: int) -> List["CombinationResult"]:
+    """Sélectionne n combinaisons en garantissant d'abord un représentant de chaque
+    catégorie de longueur (court/moyen/long), puis complète par le meilleur `key`.
+    Évite que la sélection ne contienne que des cycles longs."""
+    ordered = sorted(combos, key=key, reverse=True)
+    selected: List["CombinationResult"] = []
+    seen = set()
+    # 1er passage : le meilleur de chaque catégorie de longueur
+    for bucket in _LENGTH_ORDER:
+        for r in ordered:
+            kp = tuple(sorted(r.periods))
+            if kp in seen or _combo_bucket(r) != bucket:
+                continue
+            if any(_combos_too_similar(r.periods, s.periods) for s in selected):
+                continue
+            selected.append(r)
+            seen.add(kp)
+            break
+        if len(selected) >= n:
+            break
+    # 2e passage : compléter avec les meilleurs restants, toutes catégories confondues
+    for r in ordered:
+        if len(selected) >= n:
+            break
+        kp = tuple(sorted(r.periods))
+        if kp in seen:
+            continue
+        if any(_combos_too_similar(r.periods, s.periods) for s in selected):
+            continue
+        selected.append(r)
+        seen.add(kp)
+    return selected[:n]
+
+
+def _return_scan_pool(prices: np.ndarray, top_n: int = 24) -> List[CycleInfo]:
     """
     Brute-force scan: test every integer period from 10 to N//2,
-    rank by single-cycle compound return, return top_n as CycleInfo.
-    This ensures good cycles that the FFT misses still enter the pool.
+    rank by single-cycle compound return. Returns a LENGTH-DIVERSIFIED pool
+    (best short + best medium + best long) so that court/moyen cycles always
+    enter the pool instead of being crowded out by long cycles.
     """
     N = len(prices)
     max_p = N // 2
@@ -223,8 +286,29 @@ def _return_scan_pool(prices: np.ndarray, top_n: int = 20) -> List[CycleInfo]:
         candidates.append((cr, p))
 
     candidates.sort(reverse=True)
+
+    # Sélection diversifiée par longueur : garantir des cycles courts ET moyens,
+    # pas seulement les longs (qui dominent le rendement brut).
+    buckets: Dict[str, List[Tuple[float, int]]] = {"court": [], "moyen": [], "long": []}
+    for cr, p in candidates:
+        buckets[_length_bucket(p)].append((cr, p))
+    per_bucket = max(2, top_n // 3)
+    chosen: List[Tuple[float, int]] = []
+    chosen_p: set = set()
+    for b in _LENGTH_ORDER:
+        for cr, p in buckets[b][:per_bucket]:
+            chosen.append((cr, p))
+            chosen_p.add(p)
+    # Compléter avec les meilleurs restants (toutes longueurs confondues)
+    for cr, p in candidates:
+        if len(chosen) >= top_n:
+            break
+        if p not in chosen_p:
+            chosen.append((cr, p))
+            chosen_p.add(p)
+
     result = []
-    for cr, p in candidates[:top_n]:
+    for cr, p in chosen:
         A, B, amp = _fit_sine(detrended, float(p))
         if amp < 1e-10:
             continue
@@ -286,17 +370,10 @@ def analyze_combinations(
             if cr is not None:
                 all_valid.append(cr)
 
-        def _top_n(combos: List[CombinationResult], key, n: int) -> List[CombinationResult]:
-            selected: List[CombinationResult] = []
-            for r in sorted(combos, key=key, reverse=True):
-                if not any(_combos_too_similar(r.periods, s.periods) for s in selected):
-                    selected.append(r)
-                if len(selected) >= n:
-                    break
-            return selected
-
-        results[size] = _top_n(all_valid, key=lambda r: r.total_return_pct, n=top_n_per_size)
-        results[f"short_{size}"] = _top_n(all_valid, key=lambda r: r.short_compound_return_pct, n=top_n_per_size)
+        # Sélection diversifiée par longueur (court/moyen/long) au lieu de prendre
+        # uniquement les meilleurs rendements, qui sont toujours des cycles longs.
+        results[size] = pick_top_diverse(all_valid, key=lambda r: r.total_return_pct, n=top_n_per_size)
+        results[f"short_{size}"] = pick_top_diverse(all_valid, key=lambda r: r.short_compound_return_pct, n=top_n_per_size)
 
     return results
 

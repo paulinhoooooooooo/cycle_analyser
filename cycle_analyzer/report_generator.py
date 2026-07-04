@@ -7,7 +7,13 @@ import numpy as np
 import pandas as pd
 
 from .cycle_detector import CycleInfo
-from .combination_analyzer import CombinationResult, get_custom_combination, _combos_too_similar
+from .combination_analyzer import (
+    CombinationResult,
+    get_custom_combination,
+    _combos_too_similar,
+    pick_top_diverse,
+    combo_length_label,
+)
 from .visualizer import (
     fig_to_base64,
     plot_single_cycle,
@@ -69,7 +75,8 @@ def _summary_html(
         combo_rows += f"""
         <tr>
           <td><span class="rank-badge">#{i}</span></td>
-          <td style="font-weight:600;color:#fff">{c.label}</td>
+          <td style="font-weight:600;color:#fff">{c.label}
+            <span class="badge" style="background:#30363d;border:1px solid #6e7681;color:#adbac7;font-size:10px;margin-left:4px">{combo_length_label(c)}</span></td>
           <td><span class="badge" style="background:{ph_bg}22;border:1px solid {ph_fg};color:{ph_fg}">{ph_label}</span></td>
           <td><span class="ret-val" data-simple="{bull_s}" data-compound="{bull_c}" style="{bull_col}">{bull_s}</span></td>
           <td><span class="ret-val" data-simple="{short_s}" data-compound="{short_c}" style="{short_col2}">{short_s}</span></td>
@@ -159,6 +166,7 @@ def _combo_card_short_html(combo: CombinationResult, img_b64: str, rank: int) ->
       <div class="card-header">
         <span class="rank-badge">#{rank}</span>
         <span class="combo-title">Cycles : {combo.label}</span>
+        <span class="badge" style="background:#30363d;border:1px solid #6e7681;color:#adbac7;font-size:11px">{combo_length_label(combo)}</span>
         <span class="badge" style="background:{ph_bg}33;border:1px solid {ph_fg};color:{ph_fg};font-size:12px;padding:3px 10px">{ph_label}</span>
         <span class="stat-chip {short_col} ret-val" data-simple="{short_s}" data-compound="{short_c}" style="font-size:13px;font-weight:700">{short_s}</span>
         <span class="stat-chip red">{combo.bearish_hit_rate:.0f}% réussite short</span>
@@ -215,6 +223,7 @@ def _combo_card_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
       <div class="card-header">
         <span class="rank-badge">#{rank}</span>
         <span class="combo-title">Cycles : {combo.label}</span>
+        <span class="badge" style="background:#30363d;border:1px solid #6e7681;color:#adbac7;font-size:11px">{combo_length_label(combo)}</span>
         <span class="badge" style="background:{ph_bg}33;border:1px solid {ph_fg};color:{ph_fg};font-size:12px;padding:3px 10px">{ph_label}</span>
         <span class="stat-chip green ret-val" data-simple="{bull_s}" data-compound="{bull_c}">{bull_s}</span>
         <span class="stat-chip">{combo.hit_rate:.0f}% réussite long</span>
@@ -263,10 +272,11 @@ def generate_report(
     top3_combos = [get_custom_combination(prices, [c]) for c in top3]
     imgs_top3 = [fig_to_base64(plot_single_cycle(prices, dates, c, ticker)) for c in top3]
 
-    # ── Summary data: top 3 combos by compound return + top 3 single cycles ──
-    sorted_combos = sorted(all_combos, key=lambda r: r.compound_return_pct, reverse=True)
+    # ── Summary data: 3 combos diversifiées par longueur + top 3 single cycles ──
+    # (court/moyen/long garantis au lieu de 3 cycles longs)
+    summary_combos = pick_top_diverse(all_combos, key=lambda r: r.compound_return_pct, n=3)
     sorted_singles = sorted(zip(top3, top3_combos), key=lambda x: x[1].compound_return_pct, reverse=True)
-    summary = _summary_html(sorted_combos[:3], list(sorted_singles)[:3])
+    summary = _summary_html(summary_combos, list(sorted_singles)[:3])
 
     imgs_combos = {id(combo): fig_to_base64(plot_combination(prices, dates, combo, ticker))
                    for combo in all_unique_combos}
