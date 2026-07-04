@@ -157,10 +157,11 @@ def get_events_for_ticker(
     periods: List[int],
     period: str,
     interval: str,
+    start: Optional[str] = None,
 ) -> List[CycleEvent]:
     """Retourne les 2 prochains événements cycliques pour ce ticker (commande /prochains)."""
     try:
-        data = fetch_data(ticker, period=period, interval=interval)
+        data = fetch_data(ticker, period=period, interval=interval, start=start)
     except Exception as exc:
         print(f"  ⚠ Erreur fetch {ticker} : {exc}")
         return []
@@ -201,10 +202,11 @@ def get_imminent_events(
     period: str,
     interval: str,
     lookahead: int,
+    start: Optional[str] = None,
 ) -> List[CycleEvent]:
     """Retourne tous les événements dans les `lookahead` prochaines barres (pour les alertes auto)."""
     try:
-        data = fetch_data(ticker, period=period, interval=interval)
+        data = fetch_data(ticker, period=period, interval=interval, start=start)
     except Exception as exc:
         print(f"  ⚠ Erreur fetch {ticker} : {exc}")
         return []
@@ -264,8 +266,9 @@ def build_report(config: dict) -> str:
         periods = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
         period  = entry.get("period", "5y")
         interval = entry.get("interval", "1d")
+        start   = entry.get("start")  # date de début fixe optionnelle (AAAA-MM-JJ)
 
-        events      = get_events_for_ticker(ticker, periods, period, interval)
+        events      = get_events_for_ticker(ticker, periods, period, interval, start=start)
         periods_str = " + ".join(str(p) for p in periods)
         lines.append(f"<b>{ticker}</b> (cycles {periods_str}b)")
 
@@ -341,8 +344,9 @@ async def check_and_send_alerts(context: ContextTypes.DEFAULT_TYPE) -> None:
         periods  = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
         period   = entry.get("period", "5y")
         interval = entry.get("interval", "1d")
+        start    = entry.get("start")  # date de début fixe optionnelle (AAAA-MM-JJ)
 
-        events = get_imminent_events(ticker, periods, period, interval, lookahead)
+        events = get_imminent_events(ticker, periods, period, interval, lookahead, start=start)
         for e in events:
             key = (ticker, e.event_type, str(e.est_date))
             seen_now.add(key)

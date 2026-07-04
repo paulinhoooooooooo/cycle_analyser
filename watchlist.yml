@@ -2,6 +2,14 @@
 # Watchlist d'alertes cycliques
 # Modifier ce fichier pour ajouter/supprimer des tickers
 # Ticker = symbole Yahoo Finance (ex: AAPL, ^SOX, BTC-USD, ^FCHI)
+#
+# Champs par ticker :
+#   ticker   : symbole Yahoo Finance (obligatoire)
+#   cycles   : périodes des cycles en barres, séparées par des virgules
+#   period   : fenêtre GLISSANTE (1y 2y 5y max) — le début recule chaque jour
+#   start    : date de début FIXE (AAAA-MM-JJ) — le passé est figé, cycles
+#              reproductibles. Si présent, REMPLACE 'period'. (optionnel)
+#   interval : intervalle de bougie (1d 1wk 1mo)
 # ================================================================
 
 lookaheadBars: 3   # alerte N barres de trading avant l'événement
@@ -26,4 +34,11 @@ alerts:
     cycles: "286,164,85"
     period: 5y
     interval: 1d
-    
+
+  # Exemple avec début FIXE : le passé ne bouge plus, cycles reproductibles.
+  # Décommente et adapte (ici MRNA figé au 01/01/2021 au lieu de la fenêtre 5y).
+  # - ticker: MRNA
+  #   cycles: "86,26"
+  #   start: 2021-01-01
+  #   interval: 1d
+

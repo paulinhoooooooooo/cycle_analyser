@@ -70,10 +70,11 @@ def check_ticker(
     period: str,
     interval: str,
     lookahead: int,
+    start: str = None,
 ) -> List[str]:
     """Retourne la liste des messages d'alerte pour ce ticker."""
     try:
-        data = fetch_data(ticker, period=period, interval=interval)
+        data = fetch_data(ticker, period=period, interval=interval, start=start)
     except Exception as exc:
         print(f"  ⚠ Erreur fetch {ticker} : {exc}")
         return []
@@ -160,9 +161,10 @@ def main() -> None:
         periods = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
         period = entry.get("period", "5y")
         interval = entry.get("interval", "1d")
+        start = entry.get("start")  # date de début fixe optionnelle (AAAA-MM-JJ)
 
         print(f"  {ticker} ({' + '.join(str(p) for p in periods)}b)… ", end="", flush=True)
-        messages = check_ticker(ticker, periods, period, interval, lookahead)
+        messages = check_ticker(ticker, periods, period, interval, lookahead, start=start)
 
         if messages:
             for msg in messages:
