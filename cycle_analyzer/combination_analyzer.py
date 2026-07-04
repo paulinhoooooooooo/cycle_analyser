@@ -247,6 +247,18 @@ def combo_quality(combo: "CombinationResult", short: bool = False) -> float:
     return ret * max(hit, 0.0) / 100.0
 
 
+def _combo_contains(big: "CombinationResult", small: "CombinationResult") -> bool:
+    """True si TOUS les cycles de `small` se retrouvent (à ~18% près) dans `big`.
+    Ex: le triple 198+688+330 contient la paire 688+330 → triple redondant."""
+    used = list(big.periods)
+    for ps in small.periods:
+        match = next((u for u in used if _periods_too_close(ps, u)), None)
+        if match is None:
+            return False
+        used.remove(match)
+    return True
+
+
 def pick_diverse(
     combos: List["CombinationResult"],
     score,                      # r -> float : score de qualité (rendement × réussite)
@@ -254,6 +266,7 @@ def pick_diverse(
     n: int = _N_SHOW,
     max_reuse: int = _MAX_REUSE_PERIOD,
     min_hit: float = _MIN_HIT_RATE,
+    avoid_supersets_of: List["CombinationResult"] = None,
 ) -> List["CombinationResult"]:
     """Sélectionne jusqu'à `n` combinaisons, LES MEILLEURES D'ABORD, avec juste
     assez de diversité pour ne pas revoir sans cesse les mêmes cycles.
@@ -264,8 +277,12 @@ def pick_diverse(
       - jamais deux combinaisons quasi-identiques ;
       - un même cycle simple (ou un cycle proche, ex: 129 ≈ 130) peut apparaître
         dans au plus `max_reuse` combinaisons → un peu de diversité, mais on ne
-        jette JAMAIS une excellente combinaison juste parce qu'elle partage un cycle.
+        jette JAMAIS une excellente combinaison juste parce qu'elle partage un cycle ;
+      - `avoid_supersets_of` : on écarte une combinaison qui contient entièrement
+        une combinaison déjà proposée (ex: un triple = une paire affichée + 1 cycle),
+        car elle est redondante et sans intérêt.
     Peut renvoyer MOINS de `n` éléments s'il y a peu de combinaisons intéressantes."""
+    avoid = avoid_supersets_of or []
     ordered = sorted(combos, key=score, reverse=True)
     selected: List["CombinationResult"] = []
     used_periods: List[int] = []          # tous les cycles simples déjà affichés
@@ -276,6 +293,8 @@ def pick_diverse(
             continue                                    # ni rendement ni réussite intéressants
         if any(_combos_too_similar(r.periods, s.periods) for s in selected):
             continue
+        if any(_combo_contains(r, small) for small in avoid):
+            continue                                    # redondant : contient une combi déjà proposée
         reused = any(
             sum(1 for u in used_periods if _periods_too_close(p, u)) >= max_reuse
             for p in r.periods
@@ -399,34 +418,29 @@ def analyze_combinations(
                 all_valid.append(cr)
                 all_valid_combined.append(cr)
 
-        # Sélection : meilleures combinaisons d'abord (rendement × réussite),
-        # avec juste assez de diversité pour ne pas répéter les mêmes cycles.
+        # Sélection : meilleures combinaisons d'abord (rendement × réussite).
+        # Les triples évitent d'être un simple "paire déjà affichée + 1 cycle".
         results[size] = pick_diverse(
             all_valid,
             score=lambda r: combo_quality(r),
             hit=lambda r: r.hit_rate,
             n=top_n_per_size,
+            avoid_supersets_of=results.get(2) if size == 3 else None,
         )
         results[f"short_{size}"] = pick_diverse(
             all_valid,
             score=lambda r: combo_quality(r, short=True),
             hit=lambda r: r.bearish_hit_rate,
             n=top_n_per_size,
+            avoid_supersets_of=results.get("short_2") if size == 3 else None,
         )
 
-    # Résumé du haut : les 3 MEILLEURES combinaisons (rendement × réussite).
-    results["diverse"] = pick_diverse(
-        all_valid_combined,
-        score=lambda r: combo_quality(r),
-        hit=lambda r: r.hit_rate,
-        n=3,
-    )
-    results["diverse_short"] = pick_diverse(
-        all_valid_combined,
-        score=lambda r: combo_quality(r, short=True),
-        hit=lambda r: r.bearish_hit_rate,
-        n=3,
-    )
+    # Résumé du haut : les 3 MEILLEURES parmi les combinaisons proposées
+    # (mêmes combinaisons que le récapitulatif, pas de doublon parasite).
+    proposed_long = results[2] + results[3]
+    results["diverse"] = sorted(
+        proposed_long, key=lambda r: combo_quality(r), reverse=True
+    )[:3]
 
     return results
 

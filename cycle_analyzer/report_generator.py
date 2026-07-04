@@ -350,15 +350,15 @@ def generate_report(
             html_out += (_combo_card_short_html if short_mode else _combo_card_html)(combo, img, rank)
         return html_out
 
-    combos_html = _section_html(combinations.get(2, []), "Top 5 — Combinaisons de 2 cycles")
-    combos_html += _section_html(combinations.get(3, []), "Top 5 — Combinaisons de 3 cycles")
+    combos_html = _section_html(combinations.get(2, []), "Top 3 — Combinaisons de 2 cycles")
+    combos_html += _section_html(combinations.get(3, []), "Top 3 — Combinaisons de 3 cycles")
 
     # Short section uses independently computed short-ranked combos (different from long)
     short_top = sorted(short_combos, key=lambda r: r.short_compound_return_pct, reverse=True)
-    combos_html += _section_html(short_top, "Top 5 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
+    combos_html += _section_html(short_top, "Top 3 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
 
-    # Tableau récapitulatif de toutes les combinaisons affichées
-    recap_html = _recap_table_html(all_unique_combos)
+    # Tableau récapitulatif : uniquement les combinaisons proposées (2 et 3 cycles)
+    recap_html = _recap_table_html(combinations.get(2, []) + combinations.get(3, []))
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)
 
@@ -498,6 +498,8 @@ function switchTab(mode, btn) {{
 
 {summary}
 
+{recap_html}
+
 <h2>Spectre de Puissance</h2>
 <div class="card">
   <img src="data:image/png;base64,{img_spectrum}" class="chart-img" loading="lazy">
@@ -526,8 +528,6 @@ function switchTab(mode, btn) {{
   &nbsp;<span style="color:#f85149">■</span> Zones rouges : tous les cycles simultanément baissiers (rendement affiché en bas).
 </p>
 {combos_html}
-
-{recap_html}
 
 <hr style="border-color:var(--border);margin:32px 0 16px;">
 <p style="color:var(--text2);font-size:11px;">
