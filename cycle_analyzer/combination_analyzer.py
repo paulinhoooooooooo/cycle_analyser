@@ -228,38 +228,60 @@ def combo_length_label(combo: "CombinationResult") -> str:
     return {"court": "Court", "moyen": "Moyen", "long": "Long"}[_combo_bucket(combo)]
 
 
-def pick_top_diverse(combos: List["CombinationResult"], key, n: int) -> List["CombinationResult"]:
-    """Sélectionne n combinaisons en garantissant d'abord un représentant de chaque
-    catégorie de longueur (court/moyen/long), puis complète par le meilleur `key`.
-    Évite que la sélection ne contienne que des cycles longs."""
-    ordered = sorted(combos, key=key, reverse=True)
+# ── Paramètres de diversité de la sélection des combinaisons affichées ─────────
+_N_SHOW           = 5      # nombre MAX de combinaisons proposées (moins si peu d'intéressantes)
+_MAX_REUSE_PERIOD = 1      # un même cycle simple n'apparaît que dans N combinaisons affichées
+_MAX_PER_BUCKET   = 2      # au plus N combinaisons dans la même catégorie de longueur
+_MIN_HIT_RATE     = 50.0   # réussite minimale (%) pour qu'une combinaison soit "intéressante"
+
+
+def pick_diverse(
+    combos: List["CombinationResult"],
+    score,                      # r -> float : métrique de classement (rendement)
+    hit,                        # r -> float : % de réussite (garde-fou qualité)
+    n: int = _N_SHOW,
+    max_reuse: int = _MAX_REUSE_PERIOD,
+    max_per_bucket: int = _MAX_PER_BUCKET,
+    min_hit: float = _MIN_HIT_RATE,
+) -> List["CombinationResult"]:
+    """Sélectionne jusqu'à `n` combinaisons, les meilleures d'abord, avec de la
+    diversité et un seuil de qualité. NE FORCE PAS de catégories : si aucune
+    combinaison courte/moyenne n'est intéressante, on n'en met pas.
+
+    Règles :
+      - on ne garde que les combinaisons au rendement positif ET à la réussite
+        >= min_hit (sinon inintéressantes) ;
+      - un même cycle simple n'apparaît que dans `max_reuse` combinaison(s) affichée(s)
+        → évite de revoir les mêmes cycles simples juste recombinés ;
+      - au plus `max_per_bucket` combinaisons dans la même catégorie de longueur ;
+      - jamais deux combinaisons quasi-identiques.
+    Peut renvoyer MOINS de `n` éléments s'il y a peu de combinaisons intéressantes."""
+    ordered = sorted(combos, key=score, reverse=True)
     selected: List["CombinationResult"] = []
-    seen = set()
-    # 1er passage : le meilleur de chaque catégorie de longueur
-    for bucket in _LENGTH_ORDER:
-        for r in ordered:
-            kp = tuple(sorted(r.periods))
-            if kp in seen or _combo_bucket(r) != bucket:
-                continue
-            if any(_combos_too_similar(r.periods, s.periods) for s in selected):
-                continue
-            selected.append(r)
-            seen.add(kp)
-            break
-        if len(selected) >= n:
-            break
-    # 2e passage : compléter avec les meilleurs restants, toutes catégories confondues
+    used_periods: List[int] = []          # tous les cycles simples déjà affichés
+    bucket_use: Dict[str, int] = {}
     for r in ordered:
         if len(selected) >= n:
             break
-        kp = tuple(sorted(r.periods))
-        if kp in seen:
-            continue
+        if score(r) <= 0 or hit(r) < min_hit:
+            continue                                    # ni rendement ni réussite intéressants
         if any(_combos_too_similar(r.periods, s.periods) for s in selected):
             continue
+        b = _combo_bucket(r)
+        if bucket_use.get(b, 0) >= max_per_bucket:
+            continue
+        # Un cycle simple (ou un cycle PROCHE, ex: 129 ≈ 130) ne doit pas réapparaître
+        # au-delà de max_reuse fois → vraie diversité des cycles sous-jacents.
+        reused = any(
+            sum(1 for u in used_periods if _periods_too_close(p, u)) >= max_reuse
+            for p in r.periods
+        )
+        if reused:
+            continue
         selected.append(r)
-        seen.add(kp)
-    return selected[:n]
+        bucket_use[b] = bucket_use.get(b, 0) + 1
+        used_periods.extend(r.periods)
+    return selected
 
 
 def _return_scan_pool(prices: np.ndarray, top_n: int = 24) -> List[CycleInfo]:
@@ -355,6 +377,7 @@ def analyze_combinations(
             seen_periods.add(c.period)
 
     results: Dict = {2: [], 3: [], "short_2": [], "short_3": []}
+    all_valid_combined: List[CombinationResult] = []
 
     for size in (2, 3):
         all_valid: List[CombinationResult] = []
@@ -369,11 +392,38 @@ def analyze_combinations(
             cr = _build_combo(prices, list(combo))
             if cr is not None:
                 all_valid.append(cr)
+                all_valid_combined.append(cr)
 
-        # Sélection diversifiée par longueur (court/moyen/long) au lieu de prendre
-        # uniquement les meilleurs rendements, qui sont toujours des cycles longs.
-        results[size] = pick_top_diverse(all_valid, key=lambda r: r.total_return_pct, n=top_n_per_size)
-        results[f"short_{size}"] = pick_top_diverse(all_valid, key=lambda r: r.short_compound_return_pct, n=top_n_per_size)
+        # Sélection diversifiée : meilleurs rendements d'abord, mais sans répéter
+        # les mêmes cycles simples ni empiler la même catégorie de longueur, et
+        # seulement des combinaisons à la réussite intéressante.
+        results[size] = pick_diverse(
+            all_valid,
+            score=lambda r: r.total_return_pct,
+            hit=lambda r: r.hit_rate,
+            n=top_n_per_size,
+        )
+        results[f"short_{size}"] = pick_diverse(
+            all_valid,
+            score=lambda r: r.short_compound_return_pct,
+            hit=lambda r: r.bearish_hit_rate,
+            n=top_n_per_size,
+        )
+
+    # Listes diversifiées (toutes tailles confondues) pour le résumé : jusqu'à 5
+    # combinaisons variées, sans répéter les mêmes cycles simples.
+    results["diverse"] = pick_diverse(
+        all_valid_combined,
+        score=lambda r: r.compound_return_pct,
+        hit=lambda r: r.hit_rate,
+        n=_N_SHOW,
+    )
+    results["diverse_short"] = pick_diverse(
+        all_valid_combined,
+        score=lambda r: r.short_compound_return_pct,
+        hit=lambda r: r.bearish_hit_rate,
+        n=_N_SHOW,
+    )
 
     return results
 

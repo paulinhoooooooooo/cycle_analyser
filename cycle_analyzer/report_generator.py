@@ -11,7 +11,6 @@ from .combination_analyzer import (
     CombinationResult,
     get_custom_combination,
     _combos_too_similar,
-    pick_top_diverse,
     combo_length_label,
 )
 from .visualizer import (
@@ -64,7 +63,7 @@ def _summary_html(
     top_singles: List[tuple],          # List of (CycleInfo, CombinationResult)
 ) -> str:
     combo_rows = ""
-    for i, c in enumerate(top_combos[:3], 1):
+    for i, c in enumerate(top_combos[:5], 1):
         bull_s = f"{c.total_return_pct:+.1f}%"
         bull_c = f"{c.compound_return_pct:+.1f}%"
         short_s = f"{-c.bearish_total_return_pct:+.1f}%"
@@ -108,7 +107,7 @@ def _summary_html(
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
   <div class="card" style="padding:14px">
     <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;
-                color:var(--text2);margin-bottom:10px">Top 3 Combinaisons de cycles</div>
+                color:var(--text2);margin-bottom:10px">Combinaisons variées (jusqu'à 5)</div>
     <table>
       <thead><tr>
         <th>#</th><th>Combinaison</th><th>Phase actuelle</th>
@@ -272,9 +271,8 @@ def generate_report(
     top3_combos = [get_custom_combination(prices, [c]) for c in top3]
     imgs_top3 = [fig_to_base64(plot_single_cycle(prices, dates, c, ticker)) for c in top3]
 
-    # ── Summary data: 3 combos diversifiées par longueur + top 3 single cycles ──
-    # (court/moyen/long garantis au lieu de 3 cycles longs)
-    summary_combos = pick_top_diverse(all_combos, key=lambda r: r.compound_return_pct, n=3)
+    # ── Summary data: jusqu'à 5 combos variées (cycles simples non répétés) ──
+    summary_combos = combinations.get("diverse", [])
     sorted_singles = sorted(zip(top3, top3_combos), key=lambda x: x[1].compound_return_pct, reverse=True)
     summary = _summary_html(summary_combos, list(sorted_singles)[:3])
 
