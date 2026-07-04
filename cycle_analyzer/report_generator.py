@@ -362,10 +362,9 @@ def generate_report(
     short_top = sorted(short_combos, key=lambda r: r.short_compound_return_pct, reverse=True)
     combos_html += _section_html(short_top, "Top 3 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
 
-    # Tableau récapitulatif : combinaisons proposées (2, 3 cycles + cycles courts)
-    recap_html = _recap_table_html(
-        combinations.get(2, []) + combinations.get(3, []) + combinations.get("court", [])
-    )
+    # Tableau récapitulatif : combinaisons proposées, dédoublonnées à travers les
+    # tailles (pré-calculé dans analyze_combinations).
+    recap_html = _recap_table_html(combinations.get("recap", []))
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)
 

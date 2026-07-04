@@ -446,7 +446,7 @@ def analyze_combinations(
             pool.append(c)
             seen_periods.add(c.period)
 
-    results: Dict = {2: [], 3: [], "short_2": [], "short_3": [], "court": []}
+    results: Dict = {2: [], 3: [], "short_2": [], "short_3": [], "court": [], "recap": []}
 
     def _qual(r):
         return combo_quality(r, halflife=recency_halflife, n_bars=n_bars)
@@ -469,18 +469,22 @@ def analyze_combinations(
             if cr is not None:
                 all_valid.append(cr)
 
-    # Sélection GLOBALE des paires/triples, meilleures d'abord, sans redondance :
-    # entre une paire et un triple qui la contient (ex: 204+65 vs 329+204+65), on
-    # garde la MEILLEURE, quelle que soit sa taille. Puis répartition par taille.
-    long_sel = pick_diverse(all_valid, score=_qual, hit=lambda r: r.hit_rate,
-                            n=40, min_hit=mh)
-    results[2] = [c for c in long_sel if len(c.periods) == 2][:top_n_per_size]
-    results[3] = [c for c in long_sel if len(c.periods) == 3][:top_n_per_size]
+    pairs = [c for c in all_valid if len(c.periods) == 2]
+    triples = [c for c in all_valid if len(c.periods) == 3]
 
-    short_sel = pick_diverse(all_valid, score=_qual_short, hit=lambda r: r.bearish_hit_rate,
-                             n=40, min_hit=mh)
-    results["short_2"] = [c for c in short_sel if len(c.periods) == 2][:top_n_per_size]
-    results["short_3"] = [c for c in short_sel if len(c.periods) == 3][:top_n_per_size]
+    # Sections INDÉPENDANTES par taille : chaque section a ses 3 meilleures
+    # combinaisons (juste dédoublonnées entre elles). Une paire n'est PAS retirée
+    # sous prétexte qu'un triple la contient — sinon la section 2 cycles se vide.
+    results[2] = pick_diverse(pairs, score=_qual, hit=lambda r: r.hit_rate,
+                              n=top_n_per_size, min_hit=mh)
+    results[3] = pick_diverse(triples, score=_qual, hit=lambda r: r.hit_rate,
+                              n=top_n_per_size, min_hit=mh)
+    results["short_2"] = pick_diverse(pairs, score=_qual_short,
+                                      hit=lambda r: r.bearish_hit_rate,
+                                      n=top_n_per_size, min_hit=mh)
+    results["short_3"] = pick_diverse(triples, score=_qual_short,
+                                      hit=lambda r: r.bearish_hit_rate,
+                                      n=top_n_per_size, min_hit=mh)
 
     # Catégorie SUPPLÉMENTAIRE : combinaisons composées UNIQUEMENT de cycles courts
     # (tous les cycles < _COURT_MAX_PERIOD jours). Utile car les meilleures combos
@@ -489,10 +493,12 @@ def analyze_combinations(
     results["court"] = pick_diverse(short_only, score=_qual, hit=lambda r: r.hit_rate,
                                     n=top_n_per_size, min_hit=mh)
 
-    # Résumé du haut : les 3 MEILLEURES parmi les combinaisons proposées.
-    results["diverse"] = sorted(
-        results[2] + results[3], key=_qual, reverse=True
-    )[:3]
+    # Récapitulatif + résumé : là, on dédoublonne À TRAVERS les tailles — entre une
+    # paire et un triple qui la contient, on ne garde que la MEILLEURE des deux.
+    proposed = results[2] + results[3] + results["court"]
+    results["recap"] = pick_diverse(proposed, score=_qual, hit=lambda r: r.hit_rate,
+                                    n=99, min_hit=0.0)
+    results["diverse"] = results["recap"][:3]
 
     return results
 
