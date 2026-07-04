@@ -282,6 +282,7 @@ def generate_report(
     combinations: dict,          # {2: [CombinationResult...], 3: [CombinationResult...]}
     period: str,
     interval: str,
+    options_note: str = "",
 ) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     n_bars = len(prices)
@@ -454,6 +455,7 @@ function switchTab(mode, btn) {{
   Données : du {dates[0].strftime('%d/%m/%Y')} au {dates[-1].strftime('%d/%m/%Y')} &nbsp;|&nbsp;
   Intervalle : {interval} &nbsp;|&nbsp; {n_bars} barres
 </div>
+{f'<div class="meta" style="margin-top:6px"><span class="badge" style="background:#1f6feb22;border:1px solid #1f6feb;color:#58a6ff;padding:3px 10px">Filtres actifs : {options_note}</span></div>' if options_note else ''}
 
 <div class="perf-banner">
   <div>

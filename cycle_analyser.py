@@ -559,6 +559,11 @@ Exemples :
         progress.stop_task(t3)
 
         t4 = progress.add_task("Génération du rapport HTML…", total=None)
+        _opts = []
+        if _min_hit is not None:
+            _opts.append(f"Réussite ≥ {_min_hit:.0f}% (--reussite)")
+        if _recency is not None:
+            _opts.append(f"Priorité au récent (--recent, demi-vie {_recency:.0f} barres)")
         html = generate_report(
             ticker=ticker,
             ticker_info=ticker_info,
@@ -568,6 +573,7 @@ Exemples :
             combinations=combinations,
             period=args.period,
             interval=args.interval,
+            options_note=" · ".join(_opts),
         )
         progress.update(t4, description="[green]✓[/green] Rapport généré")
         progress.stop_task(t4)
