@@ -414,19 +414,18 @@ def analyze_combinations(
             n=top_n_per_size,
         )
 
-    # Listes pour le résumé : jusqu'à 5 meilleures combinaisons (rendement × réussite),
-    # variées mais sans jamais écarter une excellente combinaison.
+    # Résumé du haut : les 3 MEILLEURES combinaisons (rendement × réussite).
     results["diverse"] = pick_diverse(
         all_valid_combined,
         score=lambda r: combo_quality(r),
         hit=lambda r: r.hit_rate,
-        n=_N_SHOW,
+        n=3,
     )
     results["diverse_short"] = pick_diverse(
         all_valid_combined,
         score=lambda r: combo_quality(r, short=True),
         hit=lambda r: r.bearish_hit_rate,
-        n=_N_SHOW,
+        n=3,
     )
 
     return results

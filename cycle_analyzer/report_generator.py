@@ -11,6 +11,7 @@ from .combination_analyzer import (
     CombinationResult,
     get_custom_combination,
     _combos_too_similar,
+    combo_quality,
 )
 from .visualizer import (
     fig_to_base64,
@@ -62,7 +63,7 @@ def _summary_html(
     top_singles: List[tuple],          # List of (CycleInfo, CombinationResult)
 ) -> str:
     combo_rows = ""
-    for i, c in enumerate(top_combos[:5], 1):
+    for i, c in enumerate(top_combos[:3], 1):
         bull_s = f"{c.total_return_pct:+.1f}%"
         bull_c = f"{c.compound_return_pct:+.1f}%"
         short_s = f"{-c.bearish_total_return_pct:+.1f}%"
@@ -105,7 +106,7 @@ def _summary_html(
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
   <div class="card" style="padding:14px">
     <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;
-                color:var(--text2);margin-bottom:10px">Combinaisons variées (jusqu'à 5)</div>
+                color:var(--text2);margin-bottom:10px">Top 3 meilleures combinaisons</div>
     <table>
       <thead><tr>
         <th>#</th><th>Combinaison</th><th>Phase actuelle</th>
@@ -127,6 +128,46 @@ def _summary_html(
       <tbody>{single_rows}</tbody>
     </table>
   </div>
+</div>"""
+
+
+def _recap_table_html(combos: List[CombinationResult]) -> str:
+    """Tableau récapitulatif compact de toutes les combinaisons affichées :
+    cycles utilisés, rendement long & short, % de réussite long & short."""
+    if not combos:
+        return ""
+    # Une seule fois chaque combinaison, triée par qualité (rendement × réussite)
+    seen: set = set()
+    uniq: List[CombinationResult] = []
+    for c in sorted(combos, key=lambda r: combo_quality(r), reverse=True):
+        key = tuple(sorted(c.periods))
+        if key not in seen:
+            seen.add(key)
+            uniq.append(c)
+    rows = ""
+    for c in uniq:
+        long_ret = c.total_return_pct
+        short_ret = -c.bearish_total_return_pct        # gain d'un short = -variation
+        long_col = "var(--green)" if long_ret >= 0 else "var(--red)"
+        short_col = "var(--green)" if short_ret >= 0 else "var(--red)"
+        rows += f"""
+        <tr>
+          <td style="font-weight:600;color:#fff">{c.label}</td>
+          <td style="color:{long_col}">{long_ret:+.1f}%</td>
+          <td style="color:{short_col}">{short_ret:+.1f}%</td>
+          <td style="color:var(--text2)">{c.hit_rate:.0f}%</td>
+          <td style="color:var(--text2)">{c.bearish_hit_rate:.0f}%</td>
+        </tr>"""
+    return f"""
+<h2>Récapitulatif des combinaisons</h2>
+<div class="card">
+  <table>
+    <thead><tr>
+      <th>Cycles utilisés</th><th>Long ↑</th><th>Short ↓</th>
+      <th>% réussite long</th><th>% réussite short</th>
+    </tr></thead>
+    <tbody>{rows}</tbody>
+  </table>
 </div>"""
 
 
@@ -309,12 +350,15 @@ def generate_report(
             html_out += (_combo_card_short_html if short_mode else _combo_card_html)(combo, img, rank)
         return html_out
 
-    combos_html = _section_html(combinations.get(2, []), "Top 3 — Combinaisons de 2 cycles")
-    combos_html += _section_html(combinations.get(3, []), "Top 3 — Combinaisons de 3 cycles")
+    combos_html = _section_html(combinations.get(2, []), "Top 5 — Combinaisons de 2 cycles")
+    combos_html += _section_html(combinations.get(3, []), "Top 5 — Combinaisons de 3 cycles")
 
     # Short section uses independently computed short-ranked combos (different from long)
     short_top = sorted(short_combos, key=lambda r: r.short_compound_return_pct, reverse=True)
-    combos_html += _section_html(short_top, "Top 3 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
+    combos_html += _section_html(short_top, "Top 5 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
+
+    # Tableau récapitulatif de toutes les combinaisons affichées
+    recap_html = _recap_table_html(all_unique_combos)
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)
 
@@ -482,6 +526,8 @@ function switchTab(mode, btn) {{
   &nbsp;<span style="color:#f85149">■</span> Zones rouges : tous les cycles simultanément baissiers (rendement affiché en bas).
 </p>
 {combos_html}
+
+{recap_html}
 
 <hr style="border-color:var(--border);margin:32px 0 16px;">
 <p style="color:var(--text2);font-size:11px;">

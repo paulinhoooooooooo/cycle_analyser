@@ -537,7 +537,7 @@ Exemples :
         progress.stop_task(t2)
 
         t3 = progress.add_task("Analyse des combinaisons de cycles…", total=None)
-        combinations = analyze_combinations(prices, cycles, top_n_per_size=3)
+        combinations = analyze_combinations(prices, cycles, top_n_per_size=5)
         n_found = sum(len(v) for v in combinations.values())
         progress.update(t3, description=f"[green]✓[/green] {n_found} meilleures combinaisons trouvées")
         progress.stop_task(t3)
