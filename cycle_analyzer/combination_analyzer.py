@@ -297,27 +297,36 @@ def _combos_near_duplicate(a: "CombinationResult", b: "CombinationResult") -> bo
     return shared >= len(a.periods) - 1
 
 
+def _combos_redundant(a: "CombinationResult", b: "CombinationResult") -> bool:
+    """True si a et b sont redondantes : soit quasi-identiques (ne diffèrent que d'un
+    cycle), soit l'une contient entièrement l'autre (ex: paire 204+65 ⊂ triple
+    329+204+65). On départage TOUJOURS par la qualité (voir pick_diverse)."""
+    return (
+        _combos_near_duplicate(a, b)
+        or _combo_contains(a, b)
+        or _combo_contains(b, a)
+    )
+
+
 def pick_diverse(
     combos: List["CombinationResult"],
     score,                      # r -> float : score de qualité (rendement × réussite)
     hit,                        # r -> float : % de réussite (garde-fou qualité)
     n: int = _N_SHOW,
     min_hit: float = _MIN_HIT_RATE,
-    avoid_supersets_of: List["CombinationResult"] = None,
 ) -> List["CombinationResult"]:
     """Sélectionne jusqu'à `n` combinaisons, LES MEILLEURES D'ABORD (rendement ×
     réussite), en éliminant les combinaisons redondantes.
 
-    Règles :
+    Règles (la qualité prime TOUJOURS) :
       - on ne garde que les combinaisons au rendement positif ET à la réussite
         >= min_hit (sinon inintéressantes) ;
-      - deux combinaisons qui ne diffèrent que d'UN cycle (ex: 124+86+330 vs
-        124+86+204) sont quasi-identiques → on ne garde que la meilleure. Comme on
-        parcourt par qualité décroissante, la première rencontrée EST la meilleure ;
-      - `avoid_supersets_of` : on écarte une combinaison qui contient entièrement
-        une combinaison déjà proposée (ex: un triple = une paire affichée + 1 cycle).
+      - on écarte toute combinaison redondante avec une MEILLEURE déjà gardée :
+        quasi-identique (ne diffère que d'un cycle) OU relation de contenu
+        (paire ⊂ triple). Comme on parcourt par qualité décroissante, la première
+        rencontrée d'un groupe redondant est la meilleure → c'est elle qu'on garde,
+        y compris si c'est le triple qui bat la paire (ou l'inverse).
     Peut renvoyer MOINS de `n` éléments s'il y a peu de combinaisons intéressantes."""
-    avoid = avoid_supersets_of or []
     ordered = sorted(combos, key=score, reverse=True)
     selected: List["CombinationResult"] = []
     for r in ordered:
@@ -325,10 +334,8 @@ def pick_diverse(
             break
         if score(r) <= 0 or hit(r) < min_hit:
             continue                                    # ni rendement ni réussite intéressants
-        if any(_combos_near_duplicate(r, s) for s in selected):
-            continue                                    # ne diffère que d'un cycle d'une déjà gardée
-        if any(_combo_contains(r, small) for small in avoid):
-            continue                                    # redondant : contient une combi déjà proposée
+        if any(_combos_redundant(r, s) for s in selected):
+            continue                                    # redondant avec une meilleure déjà gardée
         selected.append(r)
     return selected
 
@@ -439,10 +446,10 @@ def analyze_combinations(
             seen_periods.add(c.period)
 
     results: Dict = {2: [], 3: [], "short_2": [], "short_3": []}
-    all_valid_combined: List[CombinationResult] = []
 
+    # Construit toutes les combinaisons valides (paires ET triples ensemble)
+    all_valid: List[CombinationResult] = []
     for size in (2, 3):
-        all_valid: List[CombinationResult] = []
         for combo in itertools.combinations(pool, size):
             # Skip if any two cycles within the combo are too similar to each other
             periods = [c.period for c in combo]
@@ -454,36 +461,28 @@ def analyze_combinations(
             cr = _build_combo(prices, list(combo))
             if cr is not None:
                 all_valid.append(cr)
-                all_valid_combined.append(cr)
 
-        # Sélection : meilleures combinaisons d'abord (rendement × réussite).
-        # Les triples évitent d'être un simple "paire déjà affichée + 1 cycle".
-        # En mode --recent, le score privilégie la performance récente.
-        results[size] = pick_diverse(
-            all_valid,
-            score=lambda r: combo_quality(r, halflife=recency_halflife, n_bars=n_bars),
-            hit=lambda r: r.hit_rate,
-            n=top_n_per_size,
-            min_hit=mh,
-            avoid_supersets_of=results.get(2) if size == 3 else None,
-        )
-        results[f"short_{size}"] = pick_diverse(
-            all_valid,
-            score=lambda r: combo_quality(r, short=True, halflife=recency_halflife, n_bars=n_bars),
-            hit=lambda r: r.bearish_hit_rate,
-            n=top_n_per_size,
-            min_hit=mh,
-            avoid_supersets_of=results.get("short_2") if size == 3 else None,
-        )
+    def _qual(r):
+        return combo_quality(r, halflife=recency_halflife, n_bars=n_bars)
 
-    # Résumé du haut : les 3 MEILLEURES parmi les combinaisons proposées
-    # (mêmes combinaisons que le récapitulatif, pas de doublon parasite).
-    proposed_long = results[2] + results[3]
-    results["diverse"] = sorted(
-        proposed_long,
-        key=lambda r: combo_quality(r, halflife=recency_halflife, n_bars=n_bars),
-        reverse=True,
-    )[:3]
+    def _qual_short(r):
+        return combo_quality(r, short=True, halflife=recency_halflife, n_bars=n_bars)
+
+    # Sélection GLOBALE, meilleures d'abord, sans redondance : entre une paire et un
+    # triple qui la contient (ex: 204+65 vs 329+204+65), on garde la MEILLEURE des
+    # deux, quelle que soit sa taille. Puis on répartit par taille pour les sections.
+    long_sel = pick_diverse(all_valid, score=_qual, hit=lambda r: r.hit_rate,
+                            n=40, min_hit=mh)
+    results[2] = [c for c in long_sel if len(c.periods) == 2][:top_n_per_size]
+    results[3] = [c for c in long_sel if len(c.periods) == 3][:top_n_per_size]
+
+    short_sel = pick_diverse(all_valid, score=_qual_short, hit=lambda r: r.bearish_hit_rate,
+                             n=40, min_hit=mh)
+    results["short_2"] = [c for c in short_sel if len(c.periods) == 2][:top_n_per_size]
+    results["short_3"] = [c for c in short_sel if len(c.periods) == 3][:top_n_per_size]
+
+    # Résumé du haut : les 3 MEILLEURES parmi les combinaisons proposées.
+    results["diverse"] = sorted(results[2] + results[3], key=_qual, reverse=True)[:3]
 
     return results
 
