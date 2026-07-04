@@ -40,10 +40,16 @@ def _resolve_ticker(ticker: str) -> str:
     return _TICKER_ALIASES.get(ticker.upper(), ticker)
 
 
-def fetch_data(ticker: str, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
+def fetch_data(ticker: str, period: str = "2y", interval: str = "1d",
+               start: str = None) -> pd.DataFrame:
     ticker = _resolve_ticker(ticker)
     # auto_adjust=False keeps both Close (split-adjusted) and Adj Close (+ dividends)
-    data = yf.download(ticker, period=period, interval=interval, auto_adjust=False, progress=False)
+    if start:
+        # Début FIXE : le passé est figé (start → aujourd'hui), period est ignoré.
+        data = yf.download(ticker, start=start, interval=interval, auto_adjust=False, progress=False)
+    else:
+        # Fenêtre GLISSANTE : les N dernières années à partir d'aujourd'hui.
+        data = yf.download(ticker, period=period, interval=interval, auto_adjust=False, progress=False)
     if data.empty:
         hint = ""
         if "^" in ticker:

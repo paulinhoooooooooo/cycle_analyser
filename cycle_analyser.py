@@ -215,7 +215,12 @@ Exemples :
     )
     parser.add_argument("ticker", help="Symbole boursier (ex: SPY, ^FCHI, AAPL) ou chemin vers un fichier CSV local")
     parser.add_argument("--period", default="3y",
-                        help="Période de données (1y 2y 3y 5y max …) [défaut: 3y]")
+                        help="Période de données GLISSANTE (1y 2y 3y 5y max …) [défaut: 3y]. "
+                             "Le début recule chaque jour → les résultats évoluent avec le temps.")
+    parser.add_argument("--start", default=None, metavar="AAAA-MM-JJ",
+                        help="Date de début FIXE (ex: --start 2021-01-01). Le passé est figé : "
+                             "le début ne bouge jamais, seules les nouvelles barres s'ajoutent. "
+                             "Rend les cycles/rendements reproductibles. Ignore --period si fourni.")
     parser.add_argument("--interval", default="1d",
                         help="Intervalle de bougie (1d 1wk 1mo) [défaut: 1d]")
     parser.add_argument("--cycles", type=int, default=20,
@@ -283,9 +288,11 @@ Exemples :
                 console.print(f"[red]Erreur : {e}[/red]")
                 sys.exit(1)
         else:
-            t1 = progress.add_task(f"Téléchargement des données pour {ticker}…", total=None)
+            _src = f"depuis {args.start}" if args.start else f"période {args.period}"
+            t1 = progress.add_task(f"Téléchargement des données pour {ticker} ({_src})…", total=None)
             try:
-                data = fetch_data(ticker, period=args.period, interval=args.interval)
+                data = fetch_data(ticker, period=args.period, interval=args.interval,
+                                  start=args.start)
             except ValueError as e:
                 progress.stop()
                 console.print(f"[red]Erreur : {e}[/red]")
@@ -552,7 +559,8 @@ Exemples :
     if args.output:
         report_path = Path(args.output)
     else:
-        report_path = Path(f"rapport_{ticker}_{args.period}.html")
+        _tag = f"start-{args.start}" if args.start else args.period
+        report_path = Path(f"rapport_{ticker}_{_tag}.html")
 
     report_path.write_text(html, encoding="utf-8")
 
