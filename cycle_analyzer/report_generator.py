@@ -303,10 +303,10 @@ def generate_report(
             seen_ids.add(id(c))
 
     # ── Build chart images ────────────────────────────────────────────────────
-    img_spectrum = fig_to_base64(plot_power_spectrum(prices, cycles))
-
-    top3 = cycles[:3]
-    # Compute single-cycle stats (bullish/bearish totals) for each top 3 cycle
+    # Cycles simples : on n'affiche (stats + graphiques) QUE ceux dont la réussite
+    # est >= 80%. Les autres ne sont pas montrés en détail.
+    top3 = [c for c in cycles if c.hit_rate >= 80.0][:3]
+    # Compute single-cycle stats (bullish/bearish totals) for each shown cycle
     top3_combos = [get_custom_combination(prices, [c]) for c in top3]
     imgs_top3 = [fig_to_base64(plot_single_cycle(prices, dates, c, ticker)) for c in top3]
 
@@ -345,6 +345,10 @@ def generate_report(
           <img src="data:image/png;base64,{img}" class="chart-img" loading="lazy">
         </div>"""
 
+    # Section cycles simples : uniquement si au moins un cycle a >= 80% de réussite
+    singles_html = (f'<h2>Cycles simples (réussite ≥ 80%)</h2>{top3_html}'
+                    if top3_html.strip() else "")
+
     def _section_html(combo_list: List[CombinationResult], title: str, short_mode: bool = False) -> str:
         html_out = f'<h2>{title}</h2>'
         for rank, combo in enumerate(combo_list, 1):
@@ -358,13 +362,24 @@ def generate_report(
         combos_html += _section_html(combinations.get("court", []),
                                      "Top 3 — Combinaisons de cycles courts (&lt; 200 jours)")
 
-    # Short section uses independently computed short-ranked combos (different from long)
-    short_top = sorted(short_combos, key=lambda r: r.short_compound_return_pct, reverse=True)
+    # Short section : les 3 MEILLEURES combinaisons pour le short (pas 6)
+    short_top, _seen_s = [], set()
+    for r in sorted(short_combos, key=lambda r: r.short_compound_return_pct, reverse=True):
+        k = tuple(sorted(r.periods))
+        if k in _seen_s:
+            continue
+        _seen_s.add(k)
+        short_top.append(r)
+        if len(short_top) >= 3:
+            break
     combos_html += _section_html(short_top, "Top 3 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
 
-    # Tableau récapitulatif : combinaisons proposées, dédoublonnées à travers les
-    # tailles (pré-calculé dans analyze_combinations).
-    recap_html = _recap_table_html(combinations.get("recap", []))
+    # Tableau récapitulatif : TOUTES les combinaisons proposées dans le document
+    # (2 cycles + 3 cycles + cycles courts). _recap_table_html retire seulement les
+    # doublons exacts.
+    recap_html = _recap_table_html(
+        combinations.get(2, []) + combinations.get(3, []) + combinations.get("court", [])
+    )
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)
 
@@ -507,11 +522,6 @@ function switchTab(mode, btn) {{
 
 {recap_html}
 
-<h2>Spectre de Puissance</h2>
-<div class="card">
-  <img src="data:image/png;base64,{img_spectrum}" class="chart-img" loading="lazy">
-</div>
-
 <h2>Tableau Complet des Cycles</h2>
 <div class="card">
   <table>
@@ -527,8 +537,7 @@ function switchTab(mode, btn) {{
   </table>
 </div>
 
-<h2>Top 3 Cycles les Plus Puissants</h2>
-{top3_html}
+{singles_html}
 
 <p style="color:var(--text2);margin-bottom:14px;font-size:12px;">
   <span style="color:#3fb950">■</span> Zones vertes : tous les cycles simultanément haussiers (rendement affiché en haut).
