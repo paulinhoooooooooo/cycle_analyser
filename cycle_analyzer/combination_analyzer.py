@@ -512,11 +512,11 @@ def analyze_combinations(
     # FFT-detected cycles (deduplicated by integer period)
     seen_periods: set = set()
     pool = []
-    for c in cycles[:25]:
+    for c in cycles[:30]:
         if c.period not in seen_periods:
             pool.append(c)
             seen_periods.add(c.period)
-        if len(pool) >= 16:
+        if len(pool) >= 25:
             break
 
     # Supplement with brute-force return scan so strong periods not caught by FFT
