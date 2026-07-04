@@ -252,6 +252,35 @@ def _weighted_zone_score(zones: List[ZoneResult], N: int, halflife: float,
     return sret * hit
 
 
+def pick_covering(combos, qual_fn, ret_fn, hit_fn, hit_gate_fn, n, min_hit):
+    """Sélectionne jusqu'à `n` combinaisons en GARANTISSANT de couvrir : la meilleure
+    en équilibre (rendement × réussite), la meilleure en RENDEMENT, et la meilleure en
+    RÉUSSITE. Puis complète par équilibre. Évite les quasi-doublons.
+    Ne garde que les combinaisons au rendement positif ET réussite >= min_hit."""
+    cands = [c for c in combos if qual_fn(c) > 0 and hit_gate_fn(c) >= min_hit]
+    selected: List["CombinationResult"] = []
+
+    def _add_first(pool):
+        for c in pool:
+            if len(selected) >= n:
+                return
+            if any(_combos_redundant(c, s) for s in selected):
+                continue
+            selected.append(c)
+            return
+
+    _add_first(sorted(cands, key=qual_fn, reverse=True))                     # meilleur équilibre
+    _add_first(sorted(cands, key=ret_fn, reverse=True))                      # meilleur rendement
+    _add_first(sorted(cands, key=lambda c: (hit_fn(c), ret_fn(c)), reverse=True))  # meilleure réussite
+    for c in sorted(cands, key=qual_fn, reverse=True):                       # complète par équilibre
+        if len(selected) >= n:
+            break
+        if any(_combos_redundant(c, s) for s in selected):
+            continue
+        selected.append(c)
+    return selected[:n]
+
+
 def combo_quality(combo: "CombinationResult", short: bool = False,
                   halflife: float = None, n_bars: int = None) -> float:
     """Score de qualité = rendement (simple) pondéré par le % de réussite.
@@ -471,27 +500,24 @@ def analyze_combinations(
 
     pairs = [c for c in all_valid if len(c.periods) == 2]
     triples = [c for c in all_valid if len(c.periods) == 3]
+    short_only = [c for c in all_valid if max(c.periods) < _COURT_MAX_PERIOD]
 
-    # Sections INDÉPENDANTES par taille : chaque section a ses 3 meilleures
-    # combinaisons (juste dédoublonnées entre elles). Une paire n'est PAS retirée
-    # sous prétexte qu'un triple la contient — sinon la section 2 cycles se vide.
-    results[2] = pick_diverse(pairs, score=_qual, hit=lambda r: r.hit_rate,
-                              n=top_n_per_size, min_hit=mh)
-    results[3] = pick_diverse(triples, score=_qual, hit=lambda r: r.hit_rate,
-                              n=top_n_per_size, min_hit=mh)
-    results["short_2"] = pick_diverse(pairs, score=_qual_short,
-                                      hit=lambda r: r.bearish_hit_rate,
-                                      n=top_n_per_size, min_hit=mh)
-    results["short_3"] = pick_diverse(triples, score=_qual_short,
-                                      hit=lambda r: r.bearish_hit_rate,
-                                      n=top_n_per_size, min_hit=mh)
+    _ret_l = lambda c: c.total_return_pct
+    _hit_l = lambda c: c.hit_rate
+    _ret_s = lambda c: -c.bearish_total_return_pct
+    _hit_s = lambda c: c.bearish_hit_rate
+
+    # Chaque section garantit : la meilleure en ÉQUILIBRE (rendement × réussite),
+    # la meilleure en RENDEMENT, la meilleure en RÉUSSITE (puis complète). Ainsi tu
+    # as toujours sous les yeux le meilleur rendement ET la meilleure réussite.
+    results[2] = pick_covering(pairs, _qual, _ret_l, _hit_l, _hit_l, top_n_per_size, mh)
+    results[3] = pick_covering(triples, _qual, _ret_l, _hit_l, _hit_l, top_n_per_size, mh)
+    results["short_2"] = pick_covering(pairs, _qual_short, _ret_s, _hit_s, _hit_s, top_n_per_size, mh)
+    results["short_3"] = pick_covering(triples, _qual_short, _ret_s, _hit_s, _hit_s, top_n_per_size, mh)
 
     # Catégorie SUPPLÉMENTAIRE : combinaisons composées UNIQUEMENT de cycles courts
-    # (tous les cycles < _COURT_MAX_PERIOD jours). Utile car les meilleures combos
-    # ci-dessus sont souvent dominées par des cycles longs.
-    short_only = [c for c in all_valid if max(c.periods) < _COURT_MAX_PERIOD]
-    results["court"] = pick_diverse(short_only, score=_qual, hit=lambda r: r.hit_rate,
-                                    n=top_n_per_size, min_hit=mh)
+    # (tous les cycles < _COURT_MAX_PERIOD jours).
+    results["court"] = pick_covering(short_only, _qual, _ret_l, _hit_l, _hit_l, top_n_per_size, mh)
 
     # Récapitulatif + résumé : là, on dédoublonne À TRAVERS les tailles — entre une
     # paire et un triple qui la contient, on ne garde que la MEILLEURE des deux.
