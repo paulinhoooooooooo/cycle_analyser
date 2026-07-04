@@ -230,7 +230,6 @@ def combo_length_label(combo: "CombinationResult") -> str:
 
 # ── Paramètres de sélection des combinaisons affichées ────────────────────────
 _N_SHOW           = 5      # nombre MAX de combinaisons proposées (moins si peu d'intéressantes)
-_MAX_REUSE_PERIOD = 2      # un même cycle simple peut apparaître dans au plus N combinaisons
 _MIN_HIT_RATE     = 50.0   # réussite minimale (%) pour qu'une combinaison soit "intéressante"
 
 
@@ -259,50 +258,55 @@ def _combo_contains(big: "CombinationResult", small: "CombinationResult") -> boo
     return True
 
 
+def _combos_near_duplicate(a: "CombinationResult", b: "CombinationResult") -> bool:
+    """True si a et b (même nombre de cycles) partagent tous leurs cycles SAUF au
+    plus un — donc quasi-identiques (ex: 124+86+330 et 124+86+204 ne changent que
+    d'un cycle). Dans ce cas on ne garde que la meilleure des deux."""
+    if len(a.periods) != len(b.periods):
+        return False
+    shared = 0
+    used = list(b.periods)
+    for pa in a.periods:
+        m = next((u for u in used if _periods_too_close(pa, u)), None)
+        if m is not None:
+            used.remove(m)
+            shared += 1
+    return shared >= len(a.periods) - 1
+
+
 def pick_diverse(
     combos: List["CombinationResult"],
     score,                      # r -> float : score de qualité (rendement × réussite)
     hit,                        # r -> float : % de réussite (garde-fou qualité)
     n: int = _N_SHOW,
-    max_reuse: int = _MAX_REUSE_PERIOD,
     min_hit: float = _MIN_HIT_RATE,
     avoid_supersets_of: List["CombinationResult"] = None,
 ) -> List["CombinationResult"]:
-    """Sélectionne jusqu'à `n` combinaisons, LES MEILLEURES D'ABORD, avec juste
-    assez de diversité pour ne pas revoir sans cesse les mêmes cycles.
+    """Sélectionne jusqu'à `n` combinaisons, LES MEILLEURES D'ABORD (rendement ×
+    réussite), en éliminant les combinaisons redondantes.
 
-    Règles (la qualité prime toujours sur la diversité) :
+    Règles :
       - on ne garde que les combinaisons au rendement positif ET à la réussite
         >= min_hit (sinon inintéressantes) ;
-      - jamais deux combinaisons quasi-identiques ;
-      - un même cycle simple (ou un cycle proche, ex: 129 ≈ 130) peut apparaître
-        dans au plus `max_reuse` combinaisons → un peu de diversité, mais on ne
-        jette JAMAIS une excellente combinaison juste parce qu'elle partage un cycle ;
+      - deux combinaisons qui ne diffèrent que d'UN cycle (ex: 124+86+330 vs
+        124+86+204) sont quasi-identiques → on ne garde que la meilleure. Comme on
+        parcourt par qualité décroissante, la première rencontrée EST la meilleure ;
       - `avoid_supersets_of` : on écarte une combinaison qui contient entièrement
-        une combinaison déjà proposée (ex: un triple = une paire affichée + 1 cycle),
-        car elle est redondante et sans intérêt.
+        une combinaison déjà proposée (ex: un triple = une paire affichée + 1 cycle).
     Peut renvoyer MOINS de `n` éléments s'il y a peu de combinaisons intéressantes."""
     avoid = avoid_supersets_of or []
     ordered = sorted(combos, key=score, reverse=True)
     selected: List["CombinationResult"] = []
-    used_periods: List[int] = []          # tous les cycles simples déjà affichés
     for r in ordered:
         if len(selected) >= n:
             break
         if score(r) <= 0 or hit(r) < min_hit:
             continue                                    # ni rendement ni réussite intéressants
-        if any(_combos_too_similar(r.periods, s.periods) for s in selected):
-            continue
+        if any(_combos_near_duplicate(r, s) for s in selected):
+            continue                                    # ne diffère que d'un cycle d'une déjà gardée
         if any(_combo_contains(r, small) for small in avoid):
             continue                                    # redondant : contient une combi déjà proposée
-        reused = any(
-            sum(1 for u in used_periods if _periods_too_close(p, u)) >= max_reuse
-            for p in r.periods
-        )
-        if reused:
-            continue
         selected.append(r)
-        used_periods.extend(r.periods)
     return selected
 
 
