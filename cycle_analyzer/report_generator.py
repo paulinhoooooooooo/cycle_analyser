@@ -291,9 +291,9 @@ def generate_report(
     total_perf = (price_last - price_first) / price_first * 100
 
     # Flatten long and short combo lists (short may contain different combos than long)
-    all_combos = combinations.get(2, []) + combinations.get(3, []) + combinations.get(4, [])
-    short_combos = (combinations.get("short_2", []) + combinations.get("short_3", [])
-                    + combinations.get("short_4", []))
+    all_combos = (combinations.get(2, []) + combinations.get(3, [])
+                  + combinations.get("court", []))
+    short_combos = combinations.get("short_2", []) + combinations.get("short_3", [])
     # Unique set for image generation (avoid rendering same combo twice)
     seen_ids: set = set()
     all_unique_combos: List[CombinationResult] = []
@@ -354,16 +354,17 @@ def generate_report(
 
     combos_html = _section_html(combinations.get(2, []), "Top 3 — Combinaisons de 2 cycles")
     combos_html += _section_html(combinations.get(3, []), "Top 3 — Combinaisons de 3 cycles")
-    if combinations.get(4):
-        combos_html += _section_html(combinations.get(4, []), "Top 3 — Combinaisons de 4 cycles")
+    if combinations.get("court"):
+        combos_html += _section_html(combinations.get("court", []),
+                                     "Top 3 — Combinaisons de cycles courts (&lt; 200 jours)")
 
     # Short section uses independently computed short-ranked combos (different from long)
     short_top = sorted(short_combos, key=lambda r: r.short_compound_return_pct, reverse=True)
     combos_html += _section_html(short_top, "Top 3 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
 
-    # Tableau récapitulatif : uniquement les combinaisons proposées (2, 3 et 4 cycles)
+    # Tableau récapitulatif : combinaisons proposées (2, 3 cycles + cycles courts)
     recap_html = _recap_table_html(
-        combinations.get(2, []) + combinations.get(3, []) + combinations.get(4, [])
+        combinations.get(2, []) + combinations.get(3, []) + combinations.get("court", [])
     )
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)

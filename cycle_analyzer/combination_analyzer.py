@@ -231,7 +231,7 @@ def combo_length_label(combo: "CombinationResult") -> str:
 # ── Paramètres de sélection des combinaisons affichées ────────────────────────
 _N_SHOW           = 5      # nombre MAX de combinaisons proposées (moins si peu d'intéressantes)
 _MIN_HIT_RATE     = 50.0   # réussite minimale (%) pour qu'une combinaison soit "intéressante"
-_QUAD_FROM_TOP_TRIPLES = 25  # nb de meilleurs triples étendus en quadruples (bornage coût)
+_COURT_MAX_PERIOD = 200    # catégorie "cycles courts" : tous les cycles < 200 jours
 
 
 def _weighted_zone_score(zones: List[ZoneResult], N: int, halflife: float,
@@ -446,7 +446,7 @@ def analyze_combinations(
             pool.append(c)
             seen_periods.add(c.period)
 
-    results: Dict = {2: [], 3: [], 4: [], "short_2": [], "short_3": [], "short_4": []}
+    results: Dict = {2: [], 3: [], "short_2": [], "short_3": [], "court": []}
 
     def _qual(r):
         return combo_quality(r, halflife=recency_halflife, n_bars=n_bars)
@@ -482,39 +482,16 @@ def analyze_combinations(
     results["short_2"] = [c for c in short_sel if len(c.periods) == 2][:top_n_per_size]
     results["short_3"] = [c for c in short_sel if len(c.periods) == 3][:top_n_per_size]
 
-    # Combinaisons à 4 cycles : on étend les triples PROPOSÉS en ajoutant un cycle
-    # PLUS PETIT. On ne le garde QUE si le 4e cycle AMÉLIORE le taux de réussite
-    # (l'intérêt d'ajouter un cycle plus court = filtrer et fiabiliser les zones).
-    small_pool = [c for c in pool if c.period <= _LEN_MOYEN_MAX]     # cycles courts/moyens
-    long_quads, short_quads = [], []
-    seen_quads: set = set()
-    for tri in (results[3] + results["short_3"]):
-        for sc in small_pool:
-            if sc.period >= min(tri.periods):
-                continue                                # doit être PLUS PETIT que le triple
-            if any(_periods_too_close(sc.period, p) for p in tri.periods):
-                continue
-            key = tuple(sorted(list(tri.periods) + [sc.period]))
-            if key in seen_quads:
-                continue
-            seen_quads.add(key)
-            cr4 = _build_combo(prices, list(tri.cycles) + [sc])
-            if cr4 is None:
-                continue
-            if cr4.hit_rate > tri.hit_rate and cr4.hit_rate >= mh:
-                long_quads.append(cr4)               # améliore la réussite LONG
-            if cr4.bearish_hit_rate > tri.bearish_hit_rate and cr4.bearish_hit_rate >= mh:
-                short_quads.append(cr4)              # améliore la réussite SHORT
-
-    results[4] = pick_diverse(long_quads, score=_qual, hit=lambda r: r.hit_rate,
-                              n=top_n_per_size, min_hit=mh)
-    results["short_4"] = pick_diverse(short_quads, score=_qual_short,
-                                      hit=lambda r: r.bearish_hit_rate,
-                                      n=top_n_per_size, min_hit=mh)
+    # Catégorie SUPPLÉMENTAIRE : combinaisons composées UNIQUEMENT de cycles courts
+    # (tous les cycles < _COURT_MAX_PERIOD jours). Utile car les meilleures combos
+    # ci-dessus sont souvent dominées par des cycles longs.
+    short_only = [c for c in all_valid if max(c.periods) < _COURT_MAX_PERIOD]
+    results["court"] = pick_diverse(short_only, score=_qual, hit=lambda r: r.hit_rate,
+                                    n=top_n_per_size, min_hit=mh)
 
     # Résumé du haut : les 3 MEILLEURES parmi les combinaisons proposées.
     results["diverse"] = sorted(
-        results[2] + results[3] + results[4], key=_qual, reverse=True
+        results[2] + results[3], key=_qual, reverse=True
     )[:3]
 
     return results
