@@ -407,6 +407,7 @@ def analyze_combinations(
     cycles: List[CycleInfo],
     top_n_per_size: int = 3,
     recency_halflife: float = None,
+    min_hit: float = None,
 ) -> Dict:
     """
     Returns combinations grouped by size, with separate long and short rankings:
@@ -431,6 +432,7 @@ def analyze_combinations(
     # (e.g. 86, 26 on MRNA) are always tested. En mode --recent, ce scan privilégie
     # les cycles qui performent récemment (ils entrent ainsi dans le pool).
     n_bars = len(prices)
+    mh = min_hit if min_hit is not None else _MIN_HIT_RATE   # seuil de réussite mini
     for c in _return_scan_pool(prices, top_n=20, recency_halflife=recency_halflife):
         if c.period not in seen_periods:
             pool.append(c)
@@ -462,6 +464,7 @@ def analyze_combinations(
             score=lambda r: combo_quality(r, halflife=recency_halflife, n_bars=n_bars),
             hit=lambda r: r.hit_rate,
             n=top_n_per_size,
+            min_hit=mh,
             avoid_supersets_of=results.get(2) if size == 3 else None,
         )
         results[f"short_{size}"] = pick_diverse(
@@ -469,6 +472,7 @@ def analyze_combinations(
             score=lambda r: combo_quality(r, short=True, halflife=recency_halflife, n_bars=n_bars),
             hit=lambda r: r.bearish_hit_rate,
             n=top_n_per_size,
+            min_hit=mh,
             avoid_supersets_of=results.get("short_2") if size == 3 else None,
         )
 

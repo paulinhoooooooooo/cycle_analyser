@@ -227,6 +227,11 @@ Exemples :
                              "performent ces derniers mois plutôt qu'au début de la période. "
                              "Optionnel : demi-vie en barres (ex: --recent 250). Sans valeur, "
                              "demi-vie = 1/4 de la période analysée.")
+    parser.add_argument("--reussite", nargs="?", type=float, const=80.0, default=None,
+                        metavar="MIN",
+                        help="Favoriser la RÉUSSITE : n'affiche que les combinaisons dont le "
+                             "taux de réussite est >= MIN%% (défaut 80%% si aucune valeur). "
+                             "Ex: --reussite ou --reussite 85.")
     parser.add_argument("--interval", default="1d",
                         help="Intervalle de bougie (1d 1wk 1mo) [défaut: 1d]")
     parser.add_argument("--cycles", type=int, default=20,
@@ -546,8 +551,9 @@ Exemples :
         _recency = None
         if args.recent is not None:
             _recency = args.recent if args.recent and args.recent > 0 else max(30.0, len(prices) / 4.0)
+        _min_hit = args.reussite if args.reussite is not None else None
         combinations = analyze_combinations(prices, cycles, top_n_per_size=3,
-                                            recency_halflife=_recency)
+                                            recency_halflife=_recency, min_hit=_min_hit)
         n_found = sum(len(v) for v in combinations.values())
         progress.update(t3, description=f"[green]✓[/green] {n_found} meilleures combinaisons trouvées")
         progress.stop_task(t3)
