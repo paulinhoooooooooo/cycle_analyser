@@ -228,38 +228,47 @@ def combo_length_label(combo: "CombinationResult") -> str:
     return {"court": "Court", "moyen": "Moyen", "long": "Long"}[_combo_bucket(combo)]
 
 
-# ── Paramètres de diversité de la sélection des combinaisons affichées ─────────
+# ── Paramètres de sélection des combinaisons affichées ────────────────────────
 _N_SHOW           = 5      # nombre MAX de combinaisons proposées (moins si peu d'intéressantes)
-_MAX_REUSE_PERIOD = 1      # un même cycle simple n'apparaît que dans N combinaisons affichées
-_MAX_PER_BUCKET   = 2      # au plus N combinaisons dans la même catégorie de longueur
+_MAX_REUSE_PERIOD = 2      # un même cycle simple peut apparaître dans au plus N combinaisons
 _MIN_HIT_RATE     = 50.0   # réussite minimale (%) pour qu'une combinaison soit "intéressante"
+
+
+def combo_quality(combo: "CombinationResult", short: bool = False) -> float:
+    """Score de qualité = rendement (simple) pondéré par le % de réussite.
+    Récompense À LA FOIS un bon rendement ET une bonne réussite, et évite le biais
+    du rendement composé qui gonfle artificiellement les combos à cycles courts."""
+    if short:
+        ret = -combo.bearish_total_return_pct        # gain d'un short = -variation
+        hit = combo.bearish_hit_rate
+    else:
+        ret = combo.total_return_pct
+        hit = combo.hit_rate
+    return ret * max(hit, 0.0) / 100.0
 
 
 def pick_diverse(
     combos: List["CombinationResult"],
-    score,                      # r -> float : métrique de classement (rendement)
+    score,                      # r -> float : score de qualité (rendement × réussite)
     hit,                        # r -> float : % de réussite (garde-fou qualité)
     n: int = _N_SHOW,
     max_reuse: int = _MAX_REUSE_PERIOD,
-    max_per_bucket: int = _MAX_PER_BUCKET,
     min_hit: float = _MIN_HIT_RATE,
 ) -> List["CombinationResult"]:
-    """Sélectionne jusqu'à `n` combinaisons, les meilleures d'abord, avec de la
-    diversité et un seuil de qualité. NE FORCE PAS de catégories : si aucune
-    combinaison courte/moyenne n'est intéressante, on n'en met pas.
+    """Sélectionne jusqu'à `n` combinaisons, LES MEILLEURES D'ABORD, avec juste
+    assez de diversité pour ne pas revoir sans cesse les mêmes cycles.
 
-    Règles :
+    Règles (la qualité prime toujours sur la diversité) :
       - on ne garde que les combinaisons au rendement positif ET à la réussite
         >= min_hit (sinon inintéressantes) ;
-      - un même cycle simple n'apparaît que dans `max_reuse` combinaison(s) affichée(s)
-        → évite de revoir les mêmes cycles simples juste recombinés ;
-      - au plus `max_per_bucket` combinaisons dans la même catégorie de longueur ;
-      - jamais deux combinaisons quasi-identiques.
+      - jamais deux combinaisons quasi-identiques ;
+      - un même cycle simple (ou un cycle proche, ex: 129 ≈ 130) peut apparaître
+        dans au plus `max_reuse` combinaisons → un peu de diversité, mais on ne
+        jette JAMAIS une excellente combinaison juste parce qu'elle partage un cycle.
     Peut renvoyer MOINS de `n` éléments s'il y a peu de combinaisons intéressantes."""
     ordered = sorted(combos, key=score, reverse=True)
     selected: List["CombinationResult"] = []
     used_periods: List[int] = []          # tous les cycles simples déjà affichés
-    bucket_use: Dict[str, int] = {}
     for r in ordered:
         if len(selected) >= n:
             break
@@ -267,11 +276,6 @@ def pick_diverse(
             continue                                    # ni rendement ni réussite intéressants
         if any(_combos_too_similar(r.periods, s.periods) for s in selected):
             continue
-        b = _combo_bucket(r)
-        if bucket_use.get(b, 0) >= max_per_bucket:
-            continue
-        # Un cycle simple (ou un cycle PROCHE, ex: 129 ≈ 130) ne doit pas réapparaître
-        # au-delà de max_reuse fois → vraie diversité des cycles sous-jacents.
         reused = any(
             sum(1 for u in used_periods if _periods_too_close(p, u)) >= max_reuse
             for p in r.periods
@@ -279,7 +283,6 @@ def pick_diverse(
         if reused:
             continue
         selected.append(r)
-        bucket_use[b] = bucket_use.get(b, 0) + 1
         used_periods.extend(r.periods)
     return selected
 
@@ -396,33 +399,32 @@ def analyze_combinations(
                 all_valid.append(cr)
                 all_valid_combined.append(cr)
 
-        # Sélection diversifiée : meilleurs rendements d'abord, mais sans répéter
-        # les mêmes cycles simples ni empiler la même catégorie de longueur, et
-        # seulement des combinaisons à la réussite intéressante.
+        # Sélection : meilleures combinaisons d'abord (rendement × réussite),
+        # avec juste assez de diversité pour ne pas répéter les mêmes cycles.
         results[size] = pick_diverse(
             all_valid,
-            score=lambda r: r.total_return_pct,
+            score=lambda r: combo_quality(r),
             hit=lambda r: r.hit_rate,
             n=top_n_per_size,
         )
         results[f"short_{size}"] = pick_diverse(
             all_valid,
-            score=lambda r: r.short_compound_return_pct,
+            score=lambda r: combo_quality(r, short=True),
             hit=lambda r: r.bearish_hit_rate,
             n=top_n_per_size,
         )
 
-    # Listes diversifiées (toutes tailles confondues) pour le résumé : jusqu'à 5
-    # combinaisons variées, sans répéter les mêmes cycles simples.
+    # Listes pour le résumé : jusqu'à 5 meilleures combinaisons (rendement × réussite),
+    # variées mais sans jamais écarter une excellente combinaison.
     results["diverse"] = pick_diverse(
         all_valid_combined,
-        score=lambda r: r.compound_return_pct,
+        score=lambda r: combo_quality(r),
         hit=lambda r: r.hit_rate,
         n=_N_SHOW,
     )
     results["diverse_short"] = pick_diverse(
         all_valid_combined,
-        score=lambda r: r.short_compound_return_pct,
+        score=lambda r: combo_quality(r, short=True),
         hit=lambda r: r.bearish_hit_rate,
         n=_N_SHOW,
     )
