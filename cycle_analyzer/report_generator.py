@@ -402,7 +402,8 @@ function switchTab(mode, btn) {{
 
 <h1>Analyse des Cycles — {ticker_info.get('name', ticker)} ({ticker.upper()})</h1>
 <div class="meta">
-  Généré le {now} &nbsp;|&nbsp; Période : {period} &nbsp;|&nbsp;
+  Généré le {now} &nbsp;|&nbsp;
+  Données : du {dates[0].strftime('%d/%m/%Y')} au {dates[-1].strftime('%d/%m/%Y')} &nbsp;|&nbsp;
   Intervalle : {interval} &nbsp;|&nbsp; {n_bars} barres
 </div>
 
