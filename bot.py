@@ -91,15 +91,16 @@ def _state_at(cycles: List[CycleInfo], t: float) -> Tuple[bool, bool]:
     return all_bull, all_bear
 
 
-def _next_trading_date(from_date: date, bars: int) -> date:
-    """Estime la date de trading à +bars barres (saute week-ends, approximation)."""
-    d = from_date
-    added = 0
-    while added < bars:
-        d += timedelta(days=1)
-        if d.weekday() < 5:
-            added += 1
-    return d
+def _est_future_date(dates_idx, bars_ahead: int) -> date:
+    """Date estimée à +bars_ahead barres, calculée exactement comme le graphique :
+    on extrapole l'espacement calendaire RÉEL des barres. S'adapte automatiquement
+    aux marchés 5j/7 (actions) et 7j/7 (crypto) — pas de saut de week-end en dur."""
+    last = dates_idx[-1]
+    if len(dates_idx) < 2:
+        return last.date() if hasattr(last, "date") else last
+    avg_days = (dates_idx[-1] - dates_idx[0]).days / max(len(dates_idx) - 1, 1)
+    future = last + timedelta(days=int(round(bars_ahead * avg_days)))
+    return future.date() if hasattr(future, "date") else future
 
 
 def _build_cycles_from_data(
@@ -176,7 +177,7 @@ def get_events_for_ticker(
         # Use k-1: report the peak/trough bar (last bar of previous state),
         # which matches the oscillator annotation on the chart.
         bar = max(1, k - 1)
-        est = _next_trading_date(last_date, bar)
+        est = _est_future_date(dates_idx, bar)
 
         if not bull_before and bull_after:
             events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", bar, est))
@@ -218,7 +219,7 @@ def get_imminent_events(
         bull_before, bear_before = _state_at(cycles, t_last + k - 1)
         bull_after,  bear_after  = _state_at(cycles, t_last + k)
         bar = max(1, k - 1)
-        est = _next_trading_date(last_date, bar)
+        est = _est_future_date(dates_idx, bar)
 
         if not bull_before and bull_after:
             events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", bar, est))
