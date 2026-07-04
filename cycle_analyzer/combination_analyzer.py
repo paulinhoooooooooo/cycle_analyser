@@ -78,17 +78,29 @@ def _compute_zones(prices: np.ndarray, mask: np.ndarray) -> List[ZoneResult]:
     return zones
 
 
-def _combined_bullish_mask(prices: np.ndarray, cycles: List[CycleInfo]) -> np.ndarray:
+def _bull_mask_for(prices: np.ndarray, c: CycleInfo, masks: dict = None) -> np.ndarray:
+    """Masque haussier d'un cycle, avec cache optionnel {period: mask} pour éviter
+    de recalculer la sinusoïde du même cycle dans chaque combinaison."""
+    if masks is not None:
+        m = masks.get(c.period)
+        if m is None:
+            m = get_bullish_mask(prices, c.period)
+            masks[c.period] = m
+        return m
+    return get_bullish_mask(prices, c.period)
+
+
+def _combined_bullish_mask(prices: np.ndarray, cycles: List[CycleInfo], masks: dict = None) -> np.ndarray:
     mask = np.ones(len(prices), dtype=bool)
     for c in cycles:
-        mask &= get_bullish_mask(prices, c.period)
+        mask &= _bull_mask_for(prices, c, masks)
     return mask
 
 
-def _combined_bearish_mask(prices: np.ndarray, cycles: List[CycleInfo]) -> np.ndarray:
+def _combined_bearish_mask(prices: np.ndarray, cycles: List[CycleInfo], masks: dict = None) -> np.ndarray:
     mask = np.ones(len(prices), dtype=bool)
     for c in cycles:
-        mask &= ~get_bullish_mask(prices, c.period)
+        mask &= ~_bull_mask_for(prices, c, masks)
     return mask
 
 
@@ -162,9 +174,9 @@ def _zone_stats(zones: List[ZoneResult]) -> Tuple[float, float, float]:
     return round(total_return, 2), round(hit_rate, 1), round(avg_return, 2)
 
 
-def _build_combo(prices: np.ndarray, combo: List[CycleInfo]) -> CombinationResult:
-    bull_mask = _combined_bullish_mask(prices, combo)
-    bear_mask = _combined_bearish_mask(prices, combo)
+def _build_combo(prices: np.ndarray, combo: List[CycleInfo], masks: dict = None) -> CombinationResult:
+    bull_mask = _combined_bullish_mask(prices, combo, masks)
+    bear_mask = _combined_bearish_mask(prices, combo, masks)
 
     # Skip degenerate combos
     bull_pct = bull_mask.mean()
@@ -344,6 +356,8 @@ def pick_diverse(
     hit,                        # r -> float : % de réussite (garde-fou qualité)
     n: int = _N_SHOW,
     min_hit: float = _MIN_HIT_RATE,
+    avoid: List["CombinationResult"] = None,
+    cross_dedup: bool = True,
 ) -> List["CombinationResult"]:
     """Sélectionne jusqu'à `n` combinaisons, LES MEILLEURES D'ABORD (rendement ×
     réussite), en éliminant les combinaisons redondantes.
@@ -351,12 +365,16 @@ def pick_diverse(
     Règles (la qualité prime TOUJOURS) :
       - on ne garde que les combinaisons au rendement positif ET à la réussite
         >= min_hit (sinon inintéressantes) ;
-      - on écarte toute combinaison redondante avec une MEILLEURE déjà gardée :
-        quasi-identique (ne diffère que d'un cycle) OU relation de contenu
-        (paire ⊂ triple). Comme on parcourt par qualité décroissante, la première
-        rencontrée d'un groupe redondant est la meilleure → c'est elle qu'on garde,
-        y compris si c'est le triple qui bat la paire (ou l'inverse).
+      - quasi-identiques (ne diffèrent que d'un cycle) → on garde la meilleure ;
+      - `cross_dedup=True` : on écarte aussi une combinaison en relation de contenu
+        avec une meilleure déjà gardée (paire ⊂ triple). À False pour les sections
+        indépendantes par taille (où ce cas ne se produit pas de toute façon) ;
+      - `avoid` : on n'affiche PAS une combinaison qui REPREND entièrement une
+        combinaison de `avoid` (ex: un triple = paire + 1 cycle) SANS faire mieux
+        qu'elle → un triple qui reprend une paire déjà proposée et est moins bon
+        ne sert à rien.
     Peut renvoyer MOINS de `n` éléments s'il y a peu de combinaisons intéressantes."""
+    avoid = avoid or []
     ordered = sorted(combos, key=score, reverse=True)
     selected: List["CombinationResult"] = []
     for r in ordered:
@@ -364,14 +382,50 @@ def pick_diverse(
             break
         if score(r) <= 0 or hit(r) < min_hit:
             continue                                    # ni rendement ni réussite intéressants
-        if any(_combos_redundant(r, s) for s in selected):
-            continue                                    # redondant avec une meilleure déjà gardée
+        redundant = False
+        for s in selected:
+            if _combos_near_duplicate(r, s):
+                redundant = True
+                break
+            if cross_dedup and (_combo_contains(r, s) or _combo_contains(s, r)):
+                redundant = True
+                break
+        if redundant:
+            continue
+        # Reprise inutile d'une combinaison déjà proposée ailleurs (sans faire mieux)
+        if any(_combo_contains(r, a) and score(a) >= score(r) for a in avoid):
+            continue
         selected.append(r)
     return selected
 
 
-def _return_scan_pool(prices: np.ndarray, top_n: int = 20,
-                      extra_short_medium: int = 6,
+def _select_triples(triples, score, hit, base_n, min_hit, pairs_shown, extra_cap=2):
+    """Meilleurs triples par équilibre. Si un triple retenu REPREND une paire déjà
+    proposée, on laisse le triple MAIS on ajoute une proposition supplémentaire
+    (jusqu'à base_n + extra_cap), pour ne pas gâcher un créneau."""
+    selected: List["CombinationResult"] = []
+    seen: set = set()
+    target = base_n
+    cap = base_n + extra_cap
+    for t in sorted(triples, key=score, reverse=True):
+        if len(selected) >= target:
+            break
+        if score(t) <= 0 or hit(t) < min_hit:
+            continue
+        key = tuple(sorted(t.periods))
+        if key in seen:
+            continue
+        if any(_combos_near_duplicate(t, s) for s in selected):
+            continue
+        selected.append(t)
+        seen.add(key)
+        if any(_combo_contains(t, p) for p in pairs_shown):
+            target = min(target + 1, cap)          # triple qui reprend une paire → +1 proposition
+    return selected
+
+
+def _return_scan_pool(prices: np.ndarray, top_n: int = 14,
+                      extra_short_medium: int = 12,
                       recency_halflife: float = None) -> List[CycleInfo]:
     """
     Brute-force scan: test every integer period from 10 to N//2,
@@ -462,15 +516,16 @@ def analyze_combinations(
         if c.period not in seen_periods:
             pool.append(c)
             seen_periods.add(c.period)
-        if len(pool) >= 20:
+        if len(pool) >= 16:
             break
 
     # Supplement with brute-force return scan so strong periods not caught by FFT
-    # (e.g. 86, 26 on MRNA) are always tested. En mode --recent, ce scan privilégie
-    # les cycles qui performent récemment (ils entrent ainsi dans le pool).
+    # (e.g. 86, 26 on MRNA) are always tested. On injecte GÉNÉREUSEMENT des petits
+    # cycles (courts/moyens) pour qu'ils soient testés à égalité avec les longs
+    # (ils sont souvent sous-représentés par la FFT).
     n_bars = len(prices)
     mh = min_hit if min_hit is not None else _MIN_HIT_RATE   # seuil de réussite mini
-    for c in _return_scan_pool(prices, top_n=20, recency_halflife=recency_halflife):
+    for c in _return_scan_pool(prices, recency_halflife=recency_halflife):
         if c.period not in seen_periods:
             pool.append(c)
             seen_periods.add(c.period)
@@ -483,6 +538,10 @@ def analyze_combinations(
     def _qual_short(r):
         return combo_quality(r, short=True, halflife=recency_halflife, n_bars=n_bars)
 
+    # Cache des masques haussiers : chaque cycle du pool n'est calculé qu'UNE fois
+    # (au lieu d'une fois par combinaison où il apparaît) → énorme gain de temps.
+    mask_cache: dict = {c.period: get_bullish_mask(prices, c.period) for c in pool}
+
     # Construit toutes les combinaisons valides (paires ET triples ensemble)
     all_valid: List[CombinationResult] = []
     for size in (2, 3):
@@ -494,7 +553,7 @@ def analyze_combinations(
                 for pa, pb in itertools.combinations(periods, 2)
             ):
                 continue
-            cr = _build_combo(prices, list(combo))
+            cr = _build_combo(prices, list(combo), mask_cache)
             if cr is not None:
                 all_valid.append(cr)
 
@@ -502,29 +561,30 @@ def analyze_combinations(
     triples = [c for c in all_valid if len(c.periods) == 3]
     short_only = [c for c in all_valid if max(c.periods) < _COURT_MAX_PERIOD]
 
-    _ret_l = lambda c: c.total_return_pct
     _hit_l = lambda c: c.hit_rate
-    _ret_s = lambda c: -c.bearish_total_return_pct
     _hit_s = lambda c: c.bearish_hit_rate
 
-    # Chaque section garantit : la meilleure en ÉQUILIBRE (rendement × réussite),
-    # la meilleure en RENDEMENT, la meilleure en RÉUSSITE (puis complète). Ainsi tu
-    # as toujours sous les yeux le meilleur rendement ET la meilleure réussite.
-    results[2] = pick_covering(pairs, _qual, _ret_l, _hit_l, _hit_l, top_n_per_size, mh)
-    results[3] = pick_covering(triples, _qual, _ret_l, _hit_l, _hit_l, top_n_per_size, mh)
-    results["short_2"] = pick_covering(pairs, _qual_short, _ret_s, _hit_s, _hit_s, top_n_per_size, mh)
-    results["short_3"] = pick_covering(triples, _qual_short, _ret_s, _hit_s, _hit_s, top_n_per_size, mh)
+    # Classement PUR par équilibre rendement × réussite : un petit gain de rendement
+    # ne compense pas une réussite faible ; un très gros rendement, oui.
+    results[2] = pick_diverse(pairs, score=_qual, hit=_hit_l,
+                              n=top_n_per_size, min_hit=mh, cross_dedup=False)
+    results["short_2"] = pick_diverse(pairs, score=_qual_short, hit=_hit_s,
+                                      n=top_n_per_size, min_hit=mh, cross_dedup=False)
+
+    # Triples : on garde les deux (paire + triple qui la reprend) mais on ajoute une
+    # proposition supplémentaire quand un triple reprend une paire déjà proposée.
+    results[3] = _select_triples(triples, _qual, _hit_l, top_n_per_size, mh, results[2])
+    results["short_3"] = _select_triples(triples, _qual_short, _hit_s, top_n_per_size, mh,
+                                         results["short_2"])
 
     # Catégorie SUPPLÉMENTAIRE : combinaisons composées UNIQUEMENT de cycles courts
     # (tous les cycles < _COURT_MAX_PERIOD jours).
-    results["court"] = pick_covering(short_only, _qual, _ret_l, _hit_l, _hit_l, top_n_per_size, mh)
+    results["court"] = pick_diverse(short_only, score=_qual, hit=_hit_l,
+                                    n=top_n_per_size, min_hit=mh, cross_dedup=True)
 
-    # Récapitulatif + résumé : là, on dédoublonne À TRAVERS les tailles — entre une
-    # paire et un triple qui la contient, on ne garde que la MEILLEURE des deux.
-    proposed = results[2] + results[3] + results["court"]
-    results["recap"] = pick_diverse(proposed, score=_qual, hit=lambda r: r.hit_rate,
-                                    n=99, min_hit=0.0)
-    results["diverse"] = results["recap"][:3]
+    # Résumé du haut : les 3 meilleures (dédoublonnées à travers les tailles).
+    results["diverse"] = pick_diverse(results[2] + results[3] + results["court"],
+                                      score=_qual, hit=_hit_l, n=3, min_hit=0.0, cross_dedup=True)
 
     return results
 
