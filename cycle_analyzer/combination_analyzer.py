@@ -284,12 +284,14 @@ def pick_diverse(
     return selected
 
 
-def _return_scan_pool(prices: np.ndarray, top_n: int = 24) -> List[CycleInfo]:
+def _return_scan_pool(prices: np.ndarray, top_n: int = 20,
+                      extra_short_medium: int = 6) -> List[CycleInfo]:
     """
     Brute-force scan: test every integer period from 10 to N//2,
-    rank by single-cycle compound return. Returns a LENGTH-DIVERSIFIED pool
-    (best short + best medium + best long) so that court/moyen cycles always
-    enter the pool instead of being crowded out by long cycles.
+    rank by single-cycle compound return. Returns the global best `top_n`
+    (les cycles forts ne sont JAMAIS jetés, quelle que soit leur longueur),
+    PLUS quelques cycles courts et moyens en plus, pour permettre la diversité
+    d'affichage sans évincer les meilleurs cycles (souvent longs).
     """
     N = len(prices)
     max_p = N // 2
@@ -309,25 +311,25 @@ def _return_scan_pool(prices: np.ndarray, top_n: int = 24) -> List[CycleInfo]:
 
     candidates.sort(reverse=True)
 
-    # Sélection diversifiée par longueur : garantir des cycles courts ET moyens,
-    # pas seulement les longs (qui dominent le rendement brut).
-    buckets: Dict[str, List[Tuple[float, int]]] = {"court": [], "moyen": [], "long": []}
+    # 1) Les meilleurs globalement (comportement d'origine : on ne jette aucun bon cycle)
+    chosen: List[Tuple[float, int]] = list(candidates[:top_n])
+    chosen_p: set = set(p for _, p in chosen)
+
+    # 2) EN PLUS : quelques cycles courts et moyens pour rendre la diversité possible
+    sm_buckets: Dict[str, List[Tuple[float, int]]] = {"court": [], "moyen": []}
     for cr, p in candidates:
-        buckets[_length_bucket(p)].append((cr, p))
-    per_bucket = max(2, top_n // 3)
-    chosen: List[Tuple[float, int]] = []
-    chosen_p: set = set()
-    for b in _LENGTH_ORDER:
-        for cr, p in buckets[b][:per_bucket]:
-            chosen.append((cr, p))
-            chosen_p.add(p)
-    # Compléter avec les meilleurs restants (toutes longueurs confondues)
-    for cr, p in candidates:
-        if len(chosen) >= top_n:
-            break
-        if p not in chosen_p:
-            chosen.append((cr, p))
-            chosen_p.add(p)
+        b = _length_bucket(p)
+        if b in sm_buckets:
+            sm_buckets[b].append((cr, p))
+    for b in ("court", "moyen"):
+        added = 0
+        for cr, p in sm_buckets[b]:
+            if added >= extra_short_medium:
+                break
+            if p not in chosen_p:
+                chosen.append((cr, p))
+                chosen_p.add(p)
+                added += 1
 
     result = []
     for cr, p in chosen:
@@ -429,16 +431,18 @@ def analyze_combinations(
 
 
 def _periods_too_close(p1: int, p2: int) -> bool:
-    """True if two periods within the same combo are within 10% of each other."""
-    return abs(p1 - p2) < max(5, int(0.10 * max(p1, p2)))
+    """True if two periods are within ~18% of each other (ex: 59 vs 65 = même cycle).
+    Sert à ne pas mettre deux cycles quasi-identiques dans une même combinaison
+    et à ne pas les compter comme distincts dans la diversité."""
+    return abs(p1 - p2) < max(8, int(0.18 * max(p1, p2)))
 
 
 def _combos_too_similar(periods_a: List[int], periods_b: List[int]) -> bool:
-    """True when all sorted period pairs are within 10% of each other."""
+    """True when all sorted period pairs are within ~18% of each other."""
     if len(periods_a) != len(periods_b):
         return False
     for pa, pb in zip(sorted(periods_a), sorted(periods_b)):
-        threshold = max(5, int(0.10 * max(pa, pb)))
+        threshold = max(8, int(0.18 * max(pa, pb)))
         if abs(pa - pb) >= threshold:
             return False
     return True
