@@ -221,6 +221,12 @@ Exemples :
                         help="Date de début FIXE (ex: --start 2021-01-01). Le passé est figé : "
                              "le début ne bouge jamais, seules les nouvelles barres s'ajoutent. "
                              "Rend les cycles/rendements reproductibles. Ignore --period si fourni.")
+    parser.add_argument("--recent", nargs="?", type=float, const=0.0, default=None,
+                        metavar="DEMIVIE",
+                        help="Priorité au RÉCENT : privilégie les cycles/combinaisons qui "
+                             "performent ces derniers mois plutôt qu'au début de la période. "
+                             "Optionnel : demi-vie en barres (ex: --recent 250). Sans valeur, "
+                             "demi-vie = 1/4 de la période analysée.")
     parser.add_argument("--interval", default="1d",
                         help="Intervalle de bougie (1d 1wk 1mo) [défaut: 1d]")
     parser.add_argument("--cycles", type=int, default=20,
@@ -537,7 +543,11 @@ Exemples :
         progress.stop_task(t2)
 
         t3 = progress.add_task("Analyse des combinaisons de cycles…", total=None)
-        combinations = analyze_combinations(prices, cycles, top_n_per_size=3)
+        _recency = None
+        if args.recent is not None:
+            _recency = args.recent if args.recent and args.recent > 0 else max(30.0, len(prices) / 4.0)
+        combinations = analyze_combinations(prices, cycles, top_n_per_size=3,
+                                            recency_halflife=_recency)
         n_found = sum(len(v) for v in combinations.values())
         progress.update(t3, description=f"[green]✓[/green] {n_found} meilleures combinaisons trouvées")
         progress.stop_task(t3)

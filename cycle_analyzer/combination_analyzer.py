@@ -233,10 +233,33 @@ _N_SHOW           = 5      # nombre MAX de combinaisons proposées (moins si peu
 _MIN_HIT_RATE     = 50.0   # réussite minimale (%) pour qu'une combinaison soit "intéressante"
 
 
-def combo_quality(combo: "CombinationResult", short: bool = False) -> float:
+def _weighted_zone_score(zones: List[ZoneResult], N: int, halflife: float,
+                         short: bool = False) -> float:
+    """Score pondéré par la RÉCENCE : une zone qui s'est terminée il y a `halflife`
+    barres compte moitié moins qu'une zone récente. = (somme pondérée des rendements)
+    × (taux de réussite pondéré). Sert à privilégier les cycles qui marchent RÉCEMMENT."""
+    if not zones:
+        return 0.0
+    sret = wsum = whit = 0.0
+    for z in zones:
+        r = -z.return_pct if short else z.return_pct   # gain d'un short = -variation
+        w = 0.5 ** ((N - 1 - z.end) / max(halflife, 1.0))
+        sret += w * r
+        wsum += w
+        whit += w * (1.0 if r > 0 else 0.0)
+    hit = (whit / wsum) if wsum > 0 else 0.0
+    return sret * hit
+
+
+def combo_quality(combo: "CombinationResult", short: bool = False,
+                  halflife: float = None, n_bars: int = None) -> float:
     """Score de qualité = rendement (simple) pondéré par le % de réussite.
     Récompense À LA FOIS un bon rendement ET une bonne réussite, et évite le biais
-    du rendement composé qui gonfle artificiellement les combos à cycles courts."""
+    du rendement composé qui gonfle artificiellement les combos à cycles courts.
+    Si `halflife`/`n_bars` sont fournis → pondération par la récence (mode --recent)."""
+    if halflife and n_bars:
+        zones = combo.bearish_zones if short else combo.zones
+        return _weighted_zone_score(zones, n_bars, halflife, short=short)
     if short:
         ret = -combo.bearish_total_return_pct        # gain d'un short = -variation
         hit = combo.bearish_hit_rate
@@ -311,18 +334,21 @@ def pick_diverse(
 
 
 def _return_scan_pool(prices: np.ndarray, top_n: int = 20,
-                      extra_short_medium: int = 6) -> List[CycleInfo]:
+                      extra_short_medium: int = 6,
+                      recency_halflife: float = None) -> List[CycleInfo]:
     """
     Brute-force scan: test every integer period from 10 to N//2,
-    rank by single-cycle compound return. Returns the global best `top_n`
+    rank by single-cycle return. Returns the global best `top_n`
     (les cycles forts ne sont JAMAIS jetés, quelle que soit leur longueur),
     PLUS quelques cycles courts et moyens en plus, pour permettre la diversité
     d'affichage sans évincer les meilleurs cycles (souvent longs).
+    Si `recency_halflife` est fourni, le classement privilégie les cycles qui
+    performent RÉCEMMENT (mode --recent).
     """
     N = len(prices)
     max_p = N // 2
     detrended, _ = _detrend_log(prices)
-    candidates: List[Tuple[float, int]] = []  # (compound_return, period)
+    candidates: List[Tuple[float, int]] = []  # (score, period)
 
     for p in range(10, max_p + 1):
         mask = get_bullish_mask(prices, p)
@@ -332,7 +358,10 @@ def _return_scan_pool(prices: np.ndarray, top_n: int = 20,
         zones = _compute_zones(prices, mask)
         if not zones:
             continue
-        cr = _compound_return(zones)
+        if recency_halflife:
+            cr = _weighted_zone_score(zones, N, recency_halflife)
+        else:
+            cr = _compound_return(zones)
         candidates.append((cr, p))
 
     candidates.sort(reverse=True)
@@ -377,6 +406,7 @@ def analyze_combinations(
     prices: np.ndarray,
     cycles: List[CycleInfo],
     top_n_per_size: int = 3,
+    recency_halflife: float = None,
 ) -> Dict:
     """
     Returns combinations grouped by size, with separate long and short rankings:
@@ -398,8 +428,10 @@ def analyze_combinations(
             break
 
     # Supplement with brute-force return scan so strong periods not caught by FFT
-    # (e.g. 86, 26 on MRNA) are always tested
-    for c in _return_scan_pool(prices, top_n=20):
+    # (e.g. 86, 26 on MRNA) are always tested. En mode --recent, ce scan privilégie
+    # les cycles qui performent récemment (ils entrent ainsi dans le pool).
+    n_bars = len(prices)
+    for c in _return_scan_pool(prices, top_n=20, recency_halflife=recency_halflife):
         if c.period not in seen_periods:
             pool.append(c)
             seen_periods.add(c.period)
@@ -424,16 +456,17 @@ def analyze_combinations(
 
         # Sélection : meilleures combinaisons d'abord (rendement × réussite).
         # Les triples évitent d'être un simple "paire déjà affichée + 1 cycle".
+        # En mode --recent, le score privilégie la performance récente.
         results[size] = pick_diverse(
             all_valid,
-            score=lambda r: combo_quality(r),
+            score=lambda r: combo_quality(r, halflife=recency_halflife, n_bars=n_bars),
             hit=lambda r: r.hit_rate,
             n=top_n_per_size,
             avoid_supersets_of=results.get(2) if size == 3 else None,
         )
         results[f"short_{size}"] = pick_diverse(
             all_valid,
-            score=lambda r: combo_quality(r, short=True),
+            score=lambda r: combo_quality(r, short=True, halflife=recency_halflife, n_bars=n_bars),
             hit=lambda r: r.bearish_hit_rate,
             n=top_n_per_size,
             avoid_supersets_of=results.get("short_2") if size == 3 else None,
@@ -443,7 +476,9 @@ def analyze_combinations(
     # (mêmes combinaisons que le récapitulatif, pas de doublon parasite).
     proposed_long = results[2] + results[3]
     results["diverse"] = sorted(
-        proposed_long, key=lambda r: combo_quality(r), reverse=True
+        proposed_long,
+        key=lambda r: combo_quality(r, halflife=recency_halflife, n_bars=n_bars),
+        reverse=True,
     )[:3]
 
     return results
