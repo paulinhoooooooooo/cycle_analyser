@@ -40,9 +40,21 @@ def _resolve_ticker(ticker: str) -> str:
     return _TICKER_ALIASES.get(ticker.upper(), ticker)
 
 
+def _normalize_start(start) -> str:
+    """Tolère plusieurs formats de date de début : '2020-01-01', une date YAML,
+    ou juste une année ('2020' / 2020) → 1er janvier de cette année."""
+    if start is None:
+        return None
+    s = str(start).strip()
+    if s.isdigit() and len(s) == 4:      # année seule
+        return f"{s}-01-01"
+    return s
+
+
 def fetch_data(ticker: str, period: str = "2y", interval: str = "1d",
                start: str = None) -> pd.DataFrame:
     ticker = _resolve_ticker(ticker)
+    start = _normalize_start(start)
     # auto_adjust=False keeps both Close (split-adjusted) and Adj Close (+ dividends)
     if start:
         # Début FIXE : le passé est figé (start → aujourd'hui), period est ignoré.
