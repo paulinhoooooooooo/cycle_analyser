@@ -39,31 +39,46 @@ alerts:
     cycles: "154,120"
     period: 5y
     interval: 1d
+    direction: long
 
   - ticker: SOXQ
     cycles: "121,80"
     period: 5y
     interval: 1d
+    direction: long
+
 
   - ticker: MRNA
     cycles: "86,26"
     period: 5y
     interval: 1d
+    direction: long
+
 
   - ticker: ADA-USD
     cycles: "286,164,85"
     period: 5y
     interval: 1d
+    direction: long
 
-  - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante
+
+  - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
-    start: 2020
+    start: 10/04/2020
     interval: 1d
+    direction: long
 
-  - ticker: SOL-USD          # 🥈 #2 — combinaison secondaire
+  - ticker: SOL-USD          # 🥈 #2 — combinaison secondaire en long
     cycles: "176,90,45"
-    start: 2020
+    start: 10/04/2020
     interval: 1d
+    direction: long
+
+  - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en short
+    cycles: "1102,105,59"
+    start: 10/04/2020
+    interval: 1d
+    direction: short
 
   # Exemple avec début FIXE : le passé ne bouge plus, cycles reproductibles.
   # Décommente et adapte (ici MRNA figé au 01/01/2021 au lieu de la fenêtre 5y).
