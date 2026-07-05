@@ -41,13 +41,42 @@ def _resolve_ticker(ticker: str) -> str:
 
 
 def _normalize_start(start) -> str:
-    """Tolère plusieurs formats de date de début : '2020-01-01', une date YAML,
-    ou juste une année ('2020' / 2020) → 1er janvier de cette année."""
+    """Normalise la date de début vers le format AAAA-MM-JJ attendu par Yahoo.
+    Formats acceptés :
+      - '2020' ou 2020            → 2020-01-01 (année seule)
+      - '2021-03-15' (ISO)        → inchangé
+      - '15/03/2021' (français)   → 2021-03-15   (JJ/MM/AAAA)
+      - '15-03-2021' (français)   → 2021-03-15   (JJ-MM-AAAA)
+      - un objet date YAML        → sa forme AAAA-MM-JJ
+    """
     if start is None:
         return None
     s = str(start).strip()
-    if s.isdigit() and len(s) == 4:      # année seule
+    if not s:
+        return None
+    if s.isdigit() and len(s) == 4:                 # année seule → 1er janvier
         return f"{s}-01-01"
+    try:
+        # Format français avec / ou . : JJ/MM/AAAA
+        for sep in ("/", "."):
+            if sep in s:
+                d, m, y = s.split(sep)
+                if len(y) == 2:
+                    y = "20" + y
+                return f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
+        # Avec tirets : distinguer ISO (année devant) du français (année derrière)
+        if "-" in s:
+            p = s.split("-")
+            if len(p) == 3:
+                if len(p[0]) == 4:                  # AAAA-MM-JJ (ISO)
+                    y, m, d = p
+                elif len(p[2]) == 4:                # JJ-MM-AAAA (français)
+                    d, m, y = p
+                else:
+                    return s
+                return f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
+    except (ValueError, TypeError):
+        return s                                    # format inconnu : on laisse tel quel
     return s
 
 

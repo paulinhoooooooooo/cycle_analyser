@@ -7,8 +7,10 @@
 #   ticker   : symbole Yahoo Finance (obligatoire)
 #   cycles   : périodes des cycles en barres, séparées par des virgules
 #   period   : fenêtre GLISSANTE (1y 2y 5y max) — le début recule chaque jour
-#   start    : date de début FIXE (AAAA-MM-JJ) — le passé est figé, cycles
-#              reproductibles. Si présent, REMPLACE 'period'. (optionnel)
+#   start    : date de début FIXE — le passé est figé, cycles reproductibles.
+#              Si présent, REMPLACE 'period'. Formats acceptés :
+#              15/03/2021 (français JJ/MM/AAAA), 2021-03-15 (ISO AAAA-MM-JJ),
+#              ou juste 2021 (= 1er janvier). (optionnel)
 #   interval : intervalle de bougie (1d 1wk 1mo)
 #   direction: long / short / both — filtre les alertes de cette combinaison :
 #              long  = uniquement les alignements HAUSSIERS (↑),
