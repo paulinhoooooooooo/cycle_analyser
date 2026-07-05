@@ -49,6 +49,16 @@ alerts:
     period: 5y
     interval: 1d
 
+  - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante
+    cycles: "1106,174"
+    start: 2020
+    interval: 1d
+
+  - ticker: SOL-USD          # 🥈 #2 — combinaison secondaire
+    cycles: "176,90,45"
+    start: 2020
+    interval: 1d
+
   # Exemple avec début FIXE : le passé ne bouge plus, cycles reproductibles.
   # Décommente et adapte (ici MRNA figé au 01/01/2021 au lieu de la fenêtre 5y).
   # - ticker: MRNA
