@@ -10,6 +10,10 @@
 #   start    : date de début FIXE (AAAA-MM-JJ) — le passé est figé, cycles
 #              reproductibles. Si présent, REMPLACE 'period'. (optionnel)
 #   interval : intervalle de bougie (1d 1wk 1mo)
+#   direction: long / short / both — filtre les alertes de cette combinaison :
+#              long  = uniquement les alignements HAUSSIERS (↑),
+#              short = uniquement les alignements BAISSIERS (↓),
+#              both  = les deux (défaut si absent). (optionnel)
 #
 # PLUSIEURS COMBINAISONS PAR TICKER : répéter le bloc avec le même ticker.
 # L'ORDRE DANS LE FICHIER fait le classement : la 1re entrée = 🥇 #1

@@ -72,6 +72,7 @@ def check_ticker(
     lookahead: int,
     start: str = None,
     rank_tag: str = "",
+    direction: str = "both",
 ) -> List[str]:
     """Retourne la liste des messages d'alerte pour ce ticker."""
     try:
@@ -114,29 +115,32 @@ def check_ticker(
             continue
         barre_word = "barre" if bars == 1 else "barres"
         periods_detail = " | ".join(f"{p}j" for p in periods)
+        d = (direction or "both").lower()
+        want_long = d in ("long", "both")
+        want_short = d in ("short", "both")
 
-        if not bull_before and bull_after:
+        if want_long and not bull_before and bull_after:
             messages.append(
                 f"🟢 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📈 Alignement <b>HAUSSIER</b> dans <b>{bars} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
-        if bull_before and not bull_after:
+        if want_long and bull_before and not bull_after:
             messages.append(
                 f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📉 Fin de l'alignement <b>HAUSSIER</b> dans <b>{bars} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
-        if not bear_before and bear_after:
+        if want_short and not bear_before and bear_after:
             messages.append(
                 f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📉 Alignement <b>BAISSIER</b> dans <b>{bars} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
-        if bear_before and not bear_after:
+        if want_short and bear_before and not bear_after:
             messages.append(
                 f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📈 Fin de l'alignement <b>BAISSIER</b> dans <b>{bars} {barre_word}</b>\n"
@@ -176,15 +180,17 @@ def main() -> None:
         period = entry.get("period", "5y")
         interval = entry.get("interval", "1d")
         start = entry.get("start")  # date de début fixe optionnelle (AAAA-MM-JJ)
+        direction = entry.get("direction", "both")  # long / short / both
 
         seen[ticker] = seen.get(ticker, 0) + 1
         rank_tag = ""
         if counts[ticker] > 1:
             rank_tag = f" {rank_icons.get(seen[ticker], '▫️')} <b>#{seen[ticker]}</b>"
+        rank_tag += {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
 
         print(f"  {ticker} ({' + '.join(str(p) for p in periods)}b)… ", end="", flush=True)
         messages = check_ticker(ticker, periods, period, interval, lookahead,
-                                start=start, rank_tag=rank_tag)
+                                start=start, rank_tag=rank_tag, direction=direction)
 
         if messages:
             for msg in messages:

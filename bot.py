@@ -152,12 +152,39 @@ def _event_line(e: CycleEvent) -> str:
 
 # ── Recherche d'événements ────────────────────────────────────────────────────
 
+def _event_in_direction(event_type: str, direction: str) -> bool:
+    """Filtre les événements selon la direction voulue pour une combinaison :
+    'long' → alignements HAUSSIERS uniquement, 'short' → BAISSIERS uniquement,
+    'both' (ou absent) → tout."""
+    d = (direction or "both").lower()
+    if d == "long":
+        return event_type.startswith("HAUSSIER")
+    if d == "short":
+        return event_type.startswith("BAISSIER")
+    return True
+
+
+def _transitions_at(bull_before, bull_after, bear_before, bear_after):
+    """Retourne la liste des types d'événements survenant à cette barre."""
+    out = []
+    if not bull_before and bull_after:
+        out.append("HAUSSIER_DEBUT")
+    if bull_before and not bull_after:
+        out.append("HAUSSIER_FIN")
+    if not bear_before and bear_after:
+        out.append("BAISSIER_DEBUT")
+    if bear_before and not bear_after:
+        out.append("BAISSIER_FIN")
+    return out
+
+
 def get_events_for_ticker(
     ticker: str,
     periods: List[int],
     period: str,
     interval: str,
     start: Optional[str] = None,
+    direction: str = "both",
 ) -> List[CycleEvent]:
     """Retourne les 2 prochains événements cycliques pour ce ticker (commande /prochains)."""
     try:
@@ -180,14 +207,9 @@ def get_events_for_ticker(
         bar = max(1, k - 1)
         est = _est_future_date(dates_idx, bar)
 
-        if not bull_before and bull_after:
-            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", bar, est))
-        if bull_before and not bull_after:
-            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_FIN",   bar, est))
-        if not bear_before and bear_after:
-            events.append(CycleEvent(ticker, periods_str, "BAISSIER_DEBUT", bar, est))
-        if bear_before and not bear_after:
-            events.append(CycleEvent(ticker, periods_str, "BAISSIER_FIN",   bar, est))
+        for et in _transitions_at(bull_before, bull_after, bear_before, bear_after):
+            if _event_in_direction(et, direction):
+                events.append(CycleEvent(ticker, periods_str, et, bar, est))
 
         if len(events) >= 2:
             break
@@ -203,6 +225,7 @@ def get_imminent_events(
     interval: str,
     lookahead: int,
     start: Optional[str] = None,
+    direction: str = "both",
 ) -> List[CycleEvent]:
     """Retourne tous les événements dans les `lookahead` prochaines barres (pour les alertes auto)."""
     try:
@@ -227,14 +250,9 @@ def get_imminent_events(
             continue
         est = _est_future_date(dates_idx, bar)
 
-        if not bull_before and bull_after:
-            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_DEBUT", bar, est))
-        if bull_before and not bull_after:
-            events.append(CycleEvent(ticker, periods_str, "HAUSSIER_FIN",   bar, est))
-        if not bear_before and bear_after:
-            events.append(CycleEvent(ticker, periods_str, "BAISSIER_DEBUT", bar, est))
-        if bear_before and not bear_after:
-            events.append(CycleEvent(ticker, periods_str, "BAISSIER_FIN",   bar, est))
+        for et in _transitions_at(bull_before, bull_after, bear_before, bear_after):
+            if _event_in_direction(et, direction):
+                events.append(CycleEvent(ticker, periods_str, et, bar, est))
 
     return events
 
@@ -300,11 +318,14 @@ def build_report(config: dict) -> str:
         period  = entry.get("period", "5y")
         interval = entry.get("interval", "1d")
         start   = entry.get("start")  # date de début fixe optionnelle (AAAA-MM-JJ)
+        direction = entry.get("direction", "both")  # long / short / both
 
-        events      = get_events_for_ticker(ticker, periods, period, interval, start=start)
+        events      = get_events_for_ticker(ticker, periods, period, interval,
+                                            start=start, direction=direction)
         periods_str = " + ".join(str(p) for p in periods)
         rank, total = ranks[i]
-        lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)} (cycles {periods_str}b)")
+        dir_tag = {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
+        lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)}{dir_tag} (cycles {periods_str}b)")
 
         if not events:
             lines.append("  ⚠ Aucun événement trouvé dans les 300 prochaines barres.")
@@ -380,10 +401,13 @@ async def check_and_send_alerts(context: ContextTypes.DEFAULT_TYPE) -> None:
         period   = entry.get("period", "5y")
         interval = entry.get("interval", "1d")
         start    = entry.get("start")  # date de début fixe optionnelle (AAAA-MM-JJ)
+        direction = entry.get("direction", "both")  # long / short / both
 
         periods_str = " + ".join(str(p) for p in periods)
         rank, total = ranks[i]
-        events = get_imminent_events(ticker, periods, period, interval, lookahead, start=start)
+        dir_tag = {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
+        events = get_imminent_events(ticker, periods, period, interval, lookahead,
+                                     start=start, direction=direction)
         for e in events:
             # La clé inclut les cycles : deux combinaisons du même ticker ne
             # s'étouffent plus mutuellement quand leurs événements coïncident.
@@ -396,7 +420,7 @@ async def check_and_send_alerts(context: ContextTypes.DEFAULT_TYPE) -> None:
                 alert_lines.append(
                     f"<b>🔔 Alerte cyclique — événement(s) dans ≤ {lookahead} barres</b>\n"
                 )
-            alert_lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)} (cycles {periods_str}b)")
+            alert_lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)}{dir_tag} (cycles {periods_str}b)")
             alert_lines.append(f"  {_event_line(e)}")
             alert_lines.append("")
 
