@@ -71,6 +71,7 @@ def check_ticker(
     interval: str,
     lookahead: int,
     start: str = None,
+    rank_tag: str = "",
 ) -> List[str]:
     """Retourne la liste des messages d'alerte pour ce ticker."""
     try:
@@ -112,28 +113,28 @@ def check_ticker(
 
         if not bull_before and bull_after:
             messages.append(
-                f"🟢 <b>{ticker}</b> — Cycles {periods_str}b ({periods_detail})\n"
+                f"🟢 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📈 Alignement <b>HAUSSIER</b> dans <b>{k} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
         if bull_before and not bull_after:
             messages.append(
-                f"🔴 <b>{ticker}</b> — Cycles {periods_str}b ({periods_detail})\n"
+                f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📉 Fin de l'alignement <b>HAUSSIER</b> dans <b>{k} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
         if not bear_before and bear_after:
             messages.append(
-                f"🔴 <b>{ticker}</b> — Cycles {periods_str}b ({periods_detail})\n"
+                f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📉 Alignement <b>BAISSIER</b> dans <b>{k} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
         if bear_before and not bear_after:
             messages.append(
-                f"🔴 <b>{ticker}</b> — Cycles {periods_str}b ({periods_detail})\n"
+                f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📈 Fin de l'alignement <b>BAISSIER</b> dans <b>{k} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
@@ -155,6 +156,15 @@ def main() -> None:
 
     print(f"Vérification de {len(alerts_list)} ticker(s) — J-{lookahead}…")
 
+    # Rang par ticker : l'ordre dans watchlist.yml fait le classement
+    # (1re entrée d'un ticker = #1 = combinaison la plus puissante).
+    counts: dict = {}
+    for entry in alerts_list:
+        tk = entry["ticker"].upper()
+        counts[tk] = counts.get(tk, 0) + 1
+    seen: dict = {}
+    rank_icons = {1: "🥇", 2: "🥈", 3: "🥉"}
+
     total_sent = 0
     for entry in alerts_list:
         ticker = entry["ticker"].upper()
@@ -163,8 +173,14 @@ def main() -> None:
         interval = entry.get("interval", "1d")
         start = entry.get("start")  # date de début fixe optionnelle (AAAA-MM-JJ)
 
+        seen[ticker] = seen.get(ticker, 0) + 1
+        rank_tag = ""
+        if counts[ticker] > 1:
+            rank_tag = f" {rank_icons.get(seen[ticker], '▫️')} <b>#{seen[ticker]}</b>"
+
         print(f"  {ticker} ({' + '.join(str(p) for p in periods)}b)… ", end="", flush=True)
-        messages = check_ticker(ticker, periods, period, interval, lookahead, start=start)
+        messages = check_ticker(ticker, periods, period, interval, lookahead,
+                                start=start, rank_tag=rank_tag)
 
         if messages:
             for msg in messages:

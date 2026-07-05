@@ -255,13 +255,42 @@ def _save_sent(sent: Set[Tuple]) -> None:
 
 # ── Commande /prochains ───────────────────────────────────────────────────────
 
+def _ticker_ranks(alerts_list: list) -> dict:
+    """Rang de chaque entrée pour les tickers présents plusieurs fois dans la
+    watchlist : l'ORDRE DANS LE FICHIER fait le classement (1re entrée = #1 =
+    combinaison la plus puissante). Retourne {index_entrée: (rang, total)}."""
+    counts: dict = {}
+    for entry in alerts_list:
+        tk = entry["ticker"].upper()
+        counts[tk] = counts.get(tk, 0) + 1
+    seen: dict = {}
+    ranks: dict = {}
+    for i, entry in enumerate(alerts_list):
+        tk = entry["ticker"].upper()
+        seen[tk] = seen.get(tk, 0) + 1
+        ranks[i] = (seen[tk], counts[tk])
+    return ranks
+
+
+_RANK_ICONS = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+
+def _rank_tag(rank: int, total: int) -> str:
+    """Étiquette de classement affichée quand un ticker a plusieurs combinaisons."""
+    if total <= 1:
+        return ""
+    icon = _RANK_ICONS.get(rank, "▫️")
+    return f" {icon} <b>#{rank}</b>"
+
+
 def build_report(config: dict) -> str:
     alerts_list = config.get("alerts", [])
     if not alerts_list:
         return "Aucun ticker dans watchlist.yml."
 
+    ranks = _ticker_ranks(alerts_list)
     lines = ["<b>📊 Prochains événements cycliques</b>\n"]
-    for entry in alerts_list:
+    for i, entry in enumerate(alerts_list):
         ticker  = entry["ticker"].upper()
         periods = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
         period  = entry.get("period", "5y")
@@ -270,7 +299,8 @@ def build_report(config: dict) -> str:
 
         events      = get_events_for_ticker(ticker, periods, period, interval, start=start)
         periods_str = " + ".join(str(p) for p in periods)
-        lines.append(f"<b>{ticker}</b> (cycles {periods_str}b)")
+        rank, total = ranks[i]
+        lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)} (cycles {periods_str}b)")
 
         if not events:
             lines.append("  ⚠ Aucun événement trouvé dans les 300 prochaines barres.")
@@ -339,26 +369,30 @@ async def check_and_send_alerts(context: ContextTypes.DEFAULT_TYPE) -> None:
     seen_now: Set[Tuple] = set()
     alert_lines: List[str] = []
 
-    for entry in alerts_list:
+    ranks = _ticker_ranks(alerts_list)
+    for i, entry in enumerate(alerts_list):
         ticker   = entry["ticker"].upper()
         periods  = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
         period   = entry.get("period", "5y")
         interval = entry.get("interval", "1d")
         start    = entry.get("start")  # date de début fixe optionnelle (AAAA-MM-JJ)
 
+        periods_str = " + ".join(str(p) for p in periods)
+        rank, total = ranks[i]
         events = get_imminent_events(ticker, periods, period, interval, lookahead, start=start)
         for e in events:
-            key = (ticker, e.event_type, str(e.est_date))
+            # La clé inclut les cycles : deux combinaisons du même ticker ne
+            # s'étouffent plus mutuellement quand leurs événements coïncident.
+            key = (ticker, periods_str, e.event_type, str(e.est_date))
             seen_now.add(key)
             if key in sent:
                 continue  # déjà notifié
 
-            periods_str = " + ".join(str(p) for p in periods)
             if not alert_lines:
                 alert_lines.append(
                     f"<b>🔔 Alerte cyclique — événement(s) dans ≤ {lookahead} barres</b>\n"
                 )
-            alert_lines.append(f"<b>{ticker}</b> (cycles {periods_str}b)")
+            alert_lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)} (cycles {periods_str}b)")
             alert_lines.append(f"  {_event_line(e)}")
             alert_lines.append("")
 

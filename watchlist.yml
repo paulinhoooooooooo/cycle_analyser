@@ -10,6 +10,20 @@
 #   start    : date de début FIXE (AAAA-MM-JJ) — le passé est figé, cycles
 #              reproductibles. Si présent, REMPLACE 'period'. (optionnel)
 #   interval : intervalle de bougie (1d 1wk 1mo)
+#
+# PLUSIEURS COMBINAISONS PAR TICKER : répéter le bloc avec le même ticker.
+# L'ORDRE DANS LE FICHIER fait le classement : la 1re entrée = 🥇 #1
+# (combinaison la plus puissante), la 2e = 🥈 #2, etc. Le rang apparaît
+# dans les notifications Telegram (/prochains et alertes).
+# Exemple :
+#   - ticker: ADA-USD          # 🥇 #1 — combinaison principale
+#     cycles: "286,164,85"
+#     period: 5y
+#     interval: 1d
+#   - ticker: ADA-USD          # 🥈 #2 — combinaison secondaire
+#     cycles: "124,86"
+#     period: 5y
+#     interval: 1d
 # ================================================================
 
 lookaheadBars: 3   # alerte N barres de trading avant l'événement
