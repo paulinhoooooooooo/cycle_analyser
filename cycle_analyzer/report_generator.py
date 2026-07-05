@@ -10,14 +10,12 @@ from .cycle_detector import CycleInfo
 from .combination_analyzer import (
     CombinationResult,
     get_custom_combination,
-    _combos_too_similar,
     combo_quality,
 )
 from .visualizer import (
     fig_to_base64,
     plot_single_cycle,
     plot_combination,
-    plot_power_spectrum,
 )
 
 _PHASE_BADGE = {

@@ -264,35 +264,6 @@ def _weighted_zone_score(zones: List[ZoneResult], N: int, halflife: float,
     return sret * hit
 
 
-def pick_covering(combos, qual_fn, ret_fn, hit_fn, hit_gate_fn, n, min_hit):
-    """Sélectionne jusqu'à `n` combinaisons en GARANTISSANT de couvrir : la meilleure
-    en équilibre (rendement × réussite), la meilleure en RENDEMENT, et la meilleure en
-    RÉUSSITE. Puis complète par équilibre. Évite les quasi-doublons.
-    Ne garde que les combinaisons au rendement positif ET réussite >= min_hit."""
-    cands = [c for c in combos if qual_fn(c) > 0 and hit_gate_fn(c) >= min_hit]
-    selected: List["CombinationResult"] = []
-
-    def _add_first(pool):
-        for c in pool:
-            if len(selected) >= n:
-                return
-            if any(_combos_redundant(c, s) for s in selected):
-                continue
-            selected.append(c)
-            return
-
-    _add_first(sorted(cands, key=qual_fn, reverse=True))                     # meilleur équilibre
-    _add_first(sorted(cands, key=ret_fn, reverse=True))                      # meilleur rendement
-    _add_first(sorted(cands, key=lambda c: (hit_fn(c), ret_fn(c)), reverse=True))  # meilleure réussite
-    for c in sorted(cands, key=qual_fn, reverse=True):                       # complète par équilibre
-        if len(selected) >= n:
-            break
-        if any(_combos_redundant(c, s) for s in selected):
-            continue
-        selected.append(c)
-    return selected[:n]
-
-
 def combo_quality(combo: "CombinationResult", short: bool = False,
                   halflife: float = None, n_bars: int = None) -> float:
     """Score de qualité = rendement (simple) pondéré par le % de réussite.
@@ -337,17 +308,6 @@ def _combos_near_duplicate(a: "CombinationResult", b: "CombinationResult") -> bo
             used.remove(m)
             shared += 1
     return shared >= len(a.periods) - 1
-
-
-def _combos_redundant(a: "CombinationResult", b: "CombinationResult") -> bool:
-    """True si a et b sont redondantes : soit quasi-identiques (ne diffèrent que d'un
-    cycle), soit l'une contient entièrement l'autre (ex: paire 204+65 ⊂ triple
-    329+204+65). On départage TOUJOURS par la qualité (voir pick_diverse)."""
-    return (
-        _combos_near_duplicate(a, b)
-        or _combo_contains(a, b)
-        or _combo_contains(b, a)
-    )
 
 
 def pick_diverse(
@@ -530,7 +490,7 @@ def analyze_combinations(
             pool.append(c)
             seen_periods.add(c.period)
 
-    results: Dict = {2: [], 3: [], "short_2": [], "short_3": [], "court": [], "recap": []}
+    results: Dict = {2: [], 3: [], "short_2": [], "short_3": [], "court": []}
 
     def _qual(r):
         return combo_quality(r, halflife=recency_halflife, n_bars=n_bars)
