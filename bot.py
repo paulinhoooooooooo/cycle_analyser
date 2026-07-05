@@ -217,10 +217,14 @@ def get_imminent_events(
     periods_str = " + ".join(str(p) for p in periods)
     events: List[CycleEvent] = []
 
-    for k in range(1, lookahead + 1):
+    # k va jusqu'à lookahead+1 : l'événement (pic/creux) est à la barre k-1, donc
+    # pour capter un événement « dans lookahead barres » il faut atteindre k=lookahead+1.
+    for k in range(1, lookahead + 2):
         bull_before, bear_before = _state_at(cycles, t_last + k - 1)
         bull_after,  bear_after  = _state_at(cycles, t_last + k)
         bar = max(1, k - 1)
+        if bar > lookahead:
+            continue
         est = _est_future_date(dates_idx, bar)
 
         if not bull_before and bull_after:

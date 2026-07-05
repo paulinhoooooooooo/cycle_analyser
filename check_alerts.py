@@ -103,39 +103,43 @@ def check_ticker(
 
     messages: List[str] = []
 
-    # Vérifie les transitions pour chaque k de 1 à lookahead (J-1, J-2, J-3…)
-    for k in range(1, lookahead + 1):
+    # k va jusqu'à lookahead+1 : l'événement (pic/creux) est à la barre k-1, donc
+    # pour capter un événement « dans lookahead barres » il faut atteindre k=lookahead+1.
+    for k in range(1, lookahead + 2):
         bull_before, bear_before = _state_at(cycles, t_last + k - 1)
         bull_after, bear_after = _state_at(cycles, t_last + k)
 
-        barre_word = "barre" if k == 1 else "barres"
+        bars = max(1, k - 1)
+        if bars > lookahead:
+            continue
+        barre_word = "barre" if bars == 1 else "barres"
         periods_detail = " | ".join(f"{p}j" for p in periods)
 
         if not bull_before and bull_after:
             messages.append(
                 f"🟢 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
-                f"📈 Alignement <b>HAUSSIER</b> dans <b>{k} {barre_word}</b>\n"
+                f"📈 Alignement <b>HAUSSIER</b> dans <b>{bars} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
         if bull_before and not bull_after:
             messages.append(
                 f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
-                f"📉 Fin de l'alignement <b>HAUSSIER</b> dans <b>{k} {barre_word}</b>\n"
+                f"📉 Fin de l'alignement <b>HAUSSIER</b> dans <b>{bars} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
         if not bear_before and bear_after:
             messages.append(
                 f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
-                f"📉 Alignement <b>BAISSIER</b> dans <b>{k} {barre_word}</b>\n"
+                f"📉 Alignement <b>BAISSIER</b> dans <b>{bars} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
         if bear_before and not bear_after:
             messages.append(
                 f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
-                f"📈 Fin de l'alignement <b>BAISSIER</b> dans <b>{k} {barre_word}</b>\n"
+                f"📈 Fin de l'alignement <b>BAISSIER</b> dans <b>{bars} {barre_word}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
