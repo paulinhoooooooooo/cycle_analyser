@@ -459,6 +459,7 @@ def analyze_combinations(
     top_n_per_size: int = 3,
     recency_halflife: float = None,
     min_hit: float = None,
+    min_zones: int = None,
 ) -> Dict:
     """
     Returns combinations grouped by size, with separate long and short rankings:
@@ -517,9 +518,20 @@ def analyze_combinations(
             if cr is not None:
                 all_valid.append(cr)
 
-    pairs = [c for c in all_valid if len(c.periods) == 2]
-    triples = [c for c in all_valid if len(c.periods) == 3]
-    short_only = [c for c in all_valid if max(c.periods) < _COURT_MAX_PERIOD]
+    # Filtre --zone : nombre MINIMUM de zones par combinaison (long: zones
+    # haussières ; short: zones baissières). Plus de zones = statistique plus
+    # fiable, mais des exigences trop hautes excluent les cycles longs.
+    if min_zones:
+        valid_long = [c for c in all_valid if c.n_zones >= min_zones]
+        valid_short = [c for c in all_valid if len(c.bearish_zones) >= min_zones]
+    else:
+        valid_long = valid_short = all_valid
+
+    pairs = [c for c in valid_long if len(c.periods) == 2]
+    triples = [c for c in valid_long if len(c.periods) == 3]
+    short_only = [c for c in valid_long if max(c.periods) < _COURT_MAX_PERIOD]
+    pairs_s = [c for c in valid_short if len(c.periods) == 2]
+    triples_s = [c for c in valid_short if len(c.periods) == 3]
 
     _hit_l = lambda c: c.hit_rate
     _hit_s = lambda c: c.bearish_hit_rate
@@ -528,13 +540,13 @@ def analyze_combinations(
     # ne compense pas une réussite faible ; un très gros rendement, oui.
     results[2] = pick_diverse(pairs, score=_qual, hit=_hit_l,
                               n=top_n_per_size, min_hit=mh, cross_dedup=False)
-    results["short_2"] = pick_diverse(pairs, score=_qual_short, hit=_hit_s,
+    results["short_2"] = pick_diverse(pairs_s, score=_qual_short, hit=_hit_s,
                                       n=top_n_per_size, min_hit=mh, cross_dedup=False)
 
     # Triples : on garde les deux (paire + triple qui la reprend) mais on ajoute une
     # proposition supplémentaire quand un triple reprend une paire déjà proposée.
     results[3] = _select_triples(triples, _qual, _hit_l, top_n_per_size, mh, results[2])
-    results["short_3"] = _select_triples(triples, _qual_short, _hit_s, top_n_per_size, mh,
+    results["short_3"] = _select_triples(triples_s, _qual_short, _hit_s, top_n_per_size, mh,
                                          results["short_2"])
 
     # Catégorie SUPPLÉMENTAIRE : combinaisons composées UNIQUEMENT de cycles courts

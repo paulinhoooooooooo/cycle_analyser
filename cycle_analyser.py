@@ -232,6 +232,10 @@ Exemples :
                         help="Favoriser la RÉUSSITE : n'affiche que les combinaisons dont le "
                              "taux de réussite est >= MIN%% (défaut 80%% si aucune valeur). "
                              "Ex: --reussite ou --reussite 85.")
+    parser.add_argument("--zone", type=int, default=None, metavar="MIN",
+                        help="Nombre MINIMUM de zones par combinaison (ex: --zone 15). "
+                             "Long: zones haussières, Short: zones baissières. Plus de zones "
+                             "= statistique plus fiable, mais exclut les cycles très longs.")
     parser.add_argument("--interval", default="1d",
                         help="Intervalle de bougie (1d 1wk 1mo) [défaut: 1d]")
     parser.add_argument("--cycles", type=int, default=20,
@@ -553,7 +557,8 @@ Exemples :
             _recency = args.recent if args.recent and args.recent > 0 else max(30.0, len(prices) / 4.0)
         _min_hit = args.reussite if args.reussite is not None else None
         combinations = analyze_combinations(prices, cycles, top_n_per_size=3,
-                                            recency_halflife=_recency, min_hit=_min_hit)
+                                            recency_halflife=_recency, min_hit=_min_hit,
+                                            min_zones=args.zone)
         n_found = sum(len(v) for v in combinations.values())
         progress.update(t3, description=f"[green]✓[/green] {n_found} meilleures combinaisons trouvées")
         progress.stop_task(t3)
@@ -564,6 +569,8 @@ Exemples :
             _opts.append(f"Réussite ≥ {_min_hit:.0f}% (--reussite)")
         if _recency is not None:
             _opts.append(f"Priorité au récent (--recent, demi-vie {_recency:.0f} barres)")
+        if args.zone is not None:
+            _opts.append(f"≥ {args.zone} zones (--zone)")
         html = generate_report(
             ticker=ticker,
             ticker_info=ticker_info,

@@ -12,7 +12,26 @@ import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 import pandas as pd
 
-from .cycle_detector import CycleInfo, get_oscillator_series, get_bullish_mask
+from dataclasses import replace as _dc_replace
+
+from .cycle_detector import (
+    CycleInfo,
+    get_oscillator_series,
+    get_bullish_mask,
+    _detrend_log,
+    _fit_sine,
+)
+
+
+def _int_period_coeffs(prices: np.ndarray, period: int) -> Tuple[float, float]:
+    """A,B ajustés à la période ENTIÈRE — exactement le même ajustement que la
+    courbe historique (get_oscillator_series) et que le bot Telegram. Sert à
+    tracer la projection pointillée dans le prolongement EXACT de la courbe
+    pleine (cycle.coeff_a/b sont ajustés sur period_exact, décimale → léger
+    décalage de phase si on les utilise pour le futur)."""
+    detrended, _ = _detrend_log(prices)
+    A, B, _ = _fit_sine(detrended, float(period))
+    return A, B
 from .combination_analyzer import CombinationResult
 
 # ── Dark theme colours ────────────────────────────────────────────────────────
@@ -334,8 +353,11 @@ def plot_single_cycle(
     _set_date_ticks(ax_osc, dates, N)
 
     # ── Next reversal vertical marker ─────────────────────────────────────────
+    # Coefficients ré-ajustés à la période entière : la projection et ses dates
+    # prolongent EXACTEMENT la courbe historique (même ajustement).
+    A_i, B_i = _int_period_coeffs(prices, cycle.period)
     bars_ahead, event_type = _bars_to_next_transition(
-        cycle.coeff_a, cycle.coeff_b, float(cycle.period), N
+        A_i, B_i, float(cycle.period), N
     )
     next_x = (N - 1) + bars_ahead
     event_color = RED if event_type == "pic" else GREEN
@@ -347,14 +369,13 @@ def plot_single_cycle(
     ax_price.set_xlim(0, next_x + pad)
     ax_osc.set_xlim(0, next_x + pad)
 
-    # Draw future oscillator as dashed extension
+    # Draw future oscillator as dashed extension — mêmes coefficients (période
+    # entière) et même normalisation que la courbe pleine → continuité parfaite.
     t_fut = np.arange(N - 1, next_x + pad + 1, dtype=float)
-    A_c, B_c = cycle.coeff_a, cycle.coeff_b
-    amp_c = cycle.amplitude_log
     fut_osc_norm = (
-        A_c * np.cos(2 * np.pi * t_fut / cycle.period)
-        + B_c * np.sin(2 * np.pi * t_fut / cycle.period)
-    ) / (amp_c + 1e-10)
+        A_i * np.cos(2 * np.pi * t_fut / cycle.period)
+        + B_i * np.sin(2 * np.pi * t_fut / cycle.period)
+    ) / (amp + 1e-10)
     ax_osc.plot(t_fut, fut_osc_norm, color=BLUE, linewidth=1.0,
                 linestyle="--", alpha=0.45, zorder=3)
     _annotate_future_transitions(ax_osc, t_fut, fut_osc_norm, dates, N, BLUE)
@@ -470,7 +491,14 @@ def plot_combination(
             _set_date_ticks(ax, dates, N)
 
     # ── Next alignment markers ────────────────────────────────────────────────
-    next_bull, next_bear = _next_combo_alignments(combo.cycles, N)
+    # Cycles avec coefficients ré-ajustés à la période entière : les marqueurs
+    # d'alignement et les projections prolongent exactement les courbes pleines
+    # (et coïncident avec les dates du bot Telegram).
+    cycles_int = []
+    for c in combo.cycles:
+        A_i, B_i = _int_period_coeffs(prices, c.period)
+        cycles_int.append(_dc_replace(c, coeff_a=A_i, coeff_b=B_i))
+    next_bull, next_bear = _next_combo_alignments(cycles_int, N)
 
     x_max_extra = max(v for v in [next_bull, next_bear, 1] if v is not None)
     pad_combo = max(10, int(x_max_extra * 0.12))
@@ -498,8 +526,9 @@ def plot_combination(
     _add_combo_marker(ax_price, next_bear, RED,   "↓ Alignement\nbaissier", 0.28)
 
     # ── Dashed future extension for each individual oscillator ────────────────
+    # Mêmes coefficients (période entière) que les courbes pleines → continuité.
     t_fut = np.arange(N - 1, new_xlim[1] + 1, dtype=float)
-    for ci, cycle in enumerate(combo.cycles):
+    for ci, cycle in enumerate(cycles_int):
         ax_osc = fig.axes[1 + ci]
         col = CYCLE_COLORS[ci % len(CYCLE_COLORS)]
         amp_c = cycle.amplitude_log + 1e-10
