@@ -61,7 +61,7 @@ alerts:
     interval: 1d
     direction: long
 
-   - ticker: ASML
+  - ticker: ASML
     cycles: "66,97,126"
     start: 01/01/2012
     interval: 1d
