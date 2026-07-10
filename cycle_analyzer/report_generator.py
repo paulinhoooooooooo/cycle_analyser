@@ -149,6 +149,12 @@ def _recap_table_html(combos: List[CombinationResult],
         short_ret = -c.bearish_total_return_pct        # gain d'un short = -variation
         long_col = "var(--green)" if long_ret >= 0 else "var(--red)"
         short_col = "var(--green)" if short_ret >= 0 else "var(--red)"
+        n_long = c.n_zones
+        n_short = len(c.bearish_zones)
+        avg_long = c.avg_return_pct                     # rendement moyen d'une zone haussière
+        avg_short = (sum(-z.return_pct for z in c.bearish_zones) / n_short) if n_short else 0.0
+        avg_long_col = "var(--green)" if avg_long >= 0 else "var(--red)"
+        avg_short_col = "var(--green)" if avg_short >= 0 else "var(--red)"
         rows += f"""
         <tr>
           <td style="font-weight:600;color:#fff">{c.label}</td>
@@ -156,6 +162,9 @@ def _recap_table_html(combos: List[CombinationResult],
           <td style="color:{short_col}">{short_ret:+.1f}%</td>
           <td style="color:var(--text2)">{c.hit_rate:.0f}%</td>
           <td style="color:var(--text2)">{c.bearish_hit_rate:.0f}%</td>
+          <td style="color:var(--text2)">{n_long} / {n_short}</td>
+          <td style="color:{avg_long_col}">{avg_long:+.1f}%</td>
+          <td style="color:{avg_short_col}">{avg_short:+.1f}%</td>
         </tr>"""
     return f"""
 <h2>{title}</h2>
@@ -164,6 +173,7 @@ def _recap_table_html(combos: List[CombinationResult],
     <thead><tr>
       <th>Cycles utilisés</th><th>Long ↑</th><th>Short ↓</th>
       <th>% réussite long</th><th>% réussite short</th>
+      <th>Zones (L / S)</th><th>Rdt moy/zone L</th><th>Rdt moy/zone S</th>
     </tr></thead>
     <tbody>{rows}</tbody>
   </table>
