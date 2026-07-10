@@ -264,42 +264,40 @@ def _weighted_zone_score(zones: List[ZoneResult], N: int, halflife: float,
     return sret * hit
 
 
-_WILSON_Z = 1.96   # 95% : réussite minimale crédible vu le nombre de zones
+# ── MÉTHODE 1 : bonus doux lié au nombre de zones ─────────────────────────────
+_ZONE_BONUS_FLOOR = 0.80    # score minimal conservé même avec très peu de zones
+_ZONE_BONUS_FULL  = 20      # nb de zones à partir duquel le bonus est maximal (1.0)
 
 
-def _wilson_lower(p: float, n: int) -> float:
-    """Borne inférieure de Wilson (95%) du taux de réussite. Pénalise fortement un
-    taux élevé obtenu sur PEU de zones : 100% sur 4 zones ≈ 0.51, sur 16 ≈ 0.81,
-    sur 40 ≈ 0.91. Sert à ne plus survaloriser une combinaison fiable "par chance"."""
-    if n <= 0:
-        return 0.0
-    p = min(1.0, max(0.0, p))
-    z = _WILSON_Z
-    denom = 1.0 + z * z / n
-    centre = p + z * z / (2 * n)
-    margin = z * np.sqrt((p * (1 - p) + z * z / (4 * n)) / n)
-    return max(0.0, (centre - margin) / denom)
+def _zone_bonus(n: int) -> float:
+    """Facteur multiplicatif entre `_ZONE_BONUS_FLOOR` (peu de zones) et 1.0
+    (>= `_ZONE_BONUS_FULL` zones). Les zones donnent un coup de pouce SANS jamais
+    éliminer : une combinaison à 5 zones garde 80%+ de son score. Un cycle qui se
+    démarque en rendement/réussite ressort donc quand même."""
+    frac = min(max(n, 0), _ZONE_BONUS_FULL) / _ZONE_BONUS_FULL
+    return _ZONE_BONUS_FLOOR + (1.0 - _ZONE_BONUS_FLOOR) * frac
 
 
 def combo_quality(combo: "CombinationResult", short: bool = False,
                   halflife: float = None, n_bars: int = None) -> float:
-    """Score de qualité = rendement × RÉUSSITE CRÉDIBLE (borne de Wilson).
-    Récompense un bon rendement ET une bonne réussite, MAIS pondère la réussite par
-    sa fiabilité statistique : un 100% sur 4 zones vaut bien moins qu'un 100% sur
-    16 zones. Évite ainsi de survaloriser les combos à très peu de zones.
+    """Score de qualité = rendement × réussite × bonus_zones (Méthode 1).
+    Récompense À LA FOIS un bon rendement, une bonne réussite ET un bon nombre de
+    zones — mais le nombre de zones est un BONUS (0.8→1.0), jamais un couperet :
+    une combinaison exceptionnelle apparaît même avec peu de zones. Les filtres
+    --reussite / --zone servent d'ajustement dur.
     Si `halflife`/`n_bars` sont fournis → pondération par la récence (mode --recent)."""
     if halflife and n_bars:
         zones = combo.bearish_zones if short else combo.zones
         return _weighted_zone_score(zones, n_bars, halflife, short=short)
     if short:
         ret = -combo.bearish_total_return_pct        # gain d'un short = -variation
-        p = combo.bearish_hit_rate / 100.0
+        hit = combo.bearish_hit_rate
         n = len(combo.bearish_zones)
     else:
         ret = combo.total_return_pct
-        p = combo.hit_rate / 100.0
+        hit = combo.hit_rate
         n = combo.n_zones
-    return ret * _wilson_lower(p, n)
+    return ret * max(hit, 0.0) / 100.0 * _zone_bonus(n)
 
 
 def _combo_contains(big: "CombinationResult", small: "CombinationResult") -> bool:
