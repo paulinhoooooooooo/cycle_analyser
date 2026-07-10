@@ -328,7 +328,13 @@ def build_report(config: dict) -> str:
         lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)}{dir_tag} (cycles {periods_str}b)")
 
         if not events:
-            lines.append("  ⚠ Aucun événement trouvé dans les 300 prochaines barres.")
+            what = {
+                "long":  "alignement HAUSSIER (filtre direction: long)",
+                "short": "alignement BAISSIER (filtre direction: short)",
+            }.get((direction or "both").lower(), "événement")
+            lines.append(
+                f"  ⚠ Aucun {what} dans les {MAX_LOOKAHEAD} prochaines barres."
+            )
         else:
             for e in events[:2]:
                 lines.append(f"  {_event_line(e)}")
