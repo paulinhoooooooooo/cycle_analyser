@@ -265,9 +265,10 @@ def _weighted_zone_score(zones: List[ZoneResult], N: int, halflife: float,
 
 
 # ── Méthode de calcul du score de qualité ─────────────────────────────────────
-#   1 = bonus doux (rendement × réussite × bonus_zones)
-#   2 = note pondérée /100 (rendement, réussite, zones normalisés puis moyennés)
-_QUALITY_METHOD = 2
+#   1 = bonus doux (rendement TOTAL × réussite × bonus_zones)
+#   2 = note pondérée /100 (rendement, réussite, zones normalisés sur le lot)
+#   3 = edge par zone × réussite × √(nb zones)  — échelle ABSOLUE, stable
+_QUALITY_METHOD = 3
 
 # Méthode 1 : bonus doux lié au nombre de zones
 _ZONE_BONUS_FLOOR = 0.80    # score minimal conservé même avec très peu de zones
@@ -275,6 +276,20 @@ _ZONE_BONUS_FULL  = 20      # nb de zones à partir duquel le bonus est maximal 
 
 # Méthode 2 : poids de chaque critère (doivent sommer à 1)
 _M2_W_RET, _M2_W_HIT, _M2_W_ZONE = 0.40, 0.40, 0.20
+
+
+def _m3_score(avg_ret: float, hit: float, n: int) -> float:
+    """(Méthode 3) Edge par zone × régularité × confiance statistique.
+      score = rendement_moyen_par_zone × (réussite/100) × √(nb_zones)
+    - `avg_ret` est le rendement MOYEN d'une zone (pas la somme) : c'est l'edge
+      réel par trade, il ne gonfle donc pas avec le nombre de zones.
+    - √n est un bonus de confiance à rendement DÉCROISSANT : 20 zones → ×4.5,
+      5 zones → ×2.2. Peu de zones n'élimine jamais une combi, ça atténue juste
+      le bonus → une combi au rendement/réussite exceptionnels ressort quand même.
+    - Échelle ABSOLUE (aucune normalisation sur le lot) → scores stables et
+      comparables d'un run à l'autre.
+    Rendement moyen <= 0 → score <= 0 (combi écartée par les sélecteurs)."""
+    return avg_ret * max(hit, 0.0) / 100.0 * (max(n, 0) ** 0.5)
 
 
 def _zone_bonus(n: int) -> float:
@@ -333,6 +348,10 @@ def combo_quality(combo: "CombinationResult", short: bool = False,
         ret = combo.total_return_pct
         hit = combo.hit_rate
         n = combo.n_zones
+    if _QUALITY_METHOD == 3:
+        # rendement MOYEN par zone (edge par trade), pas la somme
+        avg_ret = (ret / n) if n > 0 else 0.0
+        return _m3_score(avg_ret, hit, n)
     if _QUALITY_METHOD == 2:
         s = getattr(combo, "_m2_short" if short else "_m2_long", None)
         if s is not None:
