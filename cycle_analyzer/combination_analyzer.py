@@ -264,22 +264,42 @@ def _weighted_zone_score(zones: List[ZoneResult], N: int, halflife: float,
     return sret * hit
 
 
+_WILSON_Z = 1.96   # 95% : réussite minimale crédible vu le nombre de zones
+
+
+def _wilson_lower(p: float, n: int) -> float:
+    """Borne inférieure de Wilson (95%) du taux de réussite. Pénalise fortement un
+    taux élevé obtenu sur PEU de zones : 100% sur 4 zones ≈ 0.51, sur 16 ≈ 0.81,
+    sur 40 ≈ 0.91. Sert à ne plus survaloriser une combinaison fiable "par chance"."""
+    if n <= 0:
+        return 0.0
+    p = min(1.0, max(0.0, p))
+    z = _WILSON_Z
+    denom = 1.0 + z * z / n
+    centre = p + z * z / (2 * n)
+    margin = z * np.sqrt((p * (1 - p) + z * z / (4 * n)) / n)
+    return max(0.0, (centre - margin) / denom)
+
+
 def combo_quality(combo: "CombinationResult", short: bool = False,
                   halflife: float = None, n_bars: int = None) -> float:
-    """Score de qualité = rendement (simple) pondéré par le % de réussite.
-    Récompense À LA FOIS un bon rendement ET une bonne réussite, et évite le biais
-    du rendement composé qui gonfle artificiellement les combos à cycles courts.
+    """Score de qualité = rendement × RÉUSSITE CRÉDIBLE (borne de Wilson).
+    Récompense un bon rendement ET une bonne réussite, MAIS pondère la réussite par
+    sa fiabilité statistique : un 100% sur 4 zones vaut bien moins qu'un 100% sur
+    16 zones. Évite ainsi de survaloriser les combos à très peu de zones.
     Si `halflife`/`n_bars` sont fournis → pondération par la récence (mode --recent)."""
     if halflife and n_bars:
         zones = combo.bearish_zones if short else combo.zones
         return _weighted_zone_score(zones, n_bars, halflife, short=short)
     if short:
         ret = -combo.bearish_total_return_pct        # gain d'un short = -variation
-        hit = combo.bearish_hit_rate
+        p = combo.bearish_hit_rate / 100.0
+        n = len(combo.bearish_zones)
     else:
         ret = combo.total_return_pct
-        hit = combo.hit_rate
-    return ret * max(hit, 0.0) / 100.0
+        p = combo.hit_rate / 100.0
+        n = combo.n_zones
+    return ret * _wilson_lower(p, n)
 
 
 def _combo_contains(big: "CombinationResult", small: "CombinationResult") -> bool:
