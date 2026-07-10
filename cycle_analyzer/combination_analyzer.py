@@ -264,27 +264,63 @@ def _weighted_zone_score(zones: List[ZoneResult], N: int, halflife: float,
     return sret * hit
 
 
-# ── MÉTHODE 1 : bonus doux lié au nombre de zones ─────────────────────────────
+# ── Méthode de calcul du score de qualité ─────────────────────────────────────
+#   1 = bonus doux (rendement × réussite × bonus_zones)
+#   2 = note pondérée /100 (rendement, réussite, zones normalisés puis moyennés)
+_QUALITY_METHOD = 2
+
+# Méthode 1 : bonus doux lié au nombre de zones
 _ZONE_BONUS_FLOOR = 0.80    # score minimal conservé même avec très peu de zones
 _ZONE_BONUS_FULL  = 20      # nb de zones à partir duquel le bonus est maximal (1.0)
 
+# Méthode 2 : poids de chaque critère (doivent sommer à 1)
+_M2_W_RET, _M2_W_HIT, _M2_W_ZONE = 0.40, 0.40, 0.20
+
 
 def _zone_bonus(n: int) -> float:
-    """Facteur multiplicatif entre `_ZONE_BONUS_FLOOR` (peu de zones) et 1.0
-    (>= `_ZONE_BONUS_FULL` zones). Les zones donnent un coup de pouce SANS jamais
-    éliminer : une combinaison à 5 zones garde 80%+ de son score. Un cycle qui se
-    démarque en rendement/réussite ressort donc quand même."""
+    """(Méthode 1) Facteur entre `_ZONE_BONUS_FLOOR` (peu de zones) et 1.0
+    (>= `_ZONE_BONUS_FULL` zones)."""
     frac = min(max(n, 0), _ZONE_BONUS_FULL) / _ZONE_BONUS_FULL
     return _ZONE_BONUS_FLOOR + (1.0 - _ZONE_BONUS_FLOOR) * frac
 
 
+def _norm(v: float, lo: float, hi: float) -> float:
+    return 0.0 if hi <= lo else (v - lo) / (hi - lo)
+
+
+def _assign_m2_scores(combos: List["CombinationResult"]) -> None:
+    """(Méthode 2) Note chaque combinaison sur ses 3 critères NORMALISÉS sur tout le
+    lot (le meilleur rendement du lot = 100, etc.), puis moyenne pondérée 40/40/20.
+    Le score (long et short) est stocké sur chaque combinaison. Rendement <= 0 → -1
+    (exclu). Ainsi un combo peut ressortir grâce à un rendement/réussite exceptionnels
+    même avec peu de zones (les zones ne pèsent que 20%)."""
+    if not combos:
+        return
+    for short in (False, True):
+        ret_of = (lambda c: -c.bearish_total_return_pct) if short else (lambda c: c.total_return_pct)
+        hit_of = (lambda c: c.bearish_hit_rate) if short else (lambda c: c.hit_rate)
+        zon_of = (lambda c: len(c.bearish_zones)) if short else (lambda c: c.n_zones)
+        rets = [ret_of(c) for c in combos]
+        hits = [hit_of(c) for c in combos]
+        zs   = [zon_of(c) for c in combos]
+        rmin, rmax = min(rets), max(rets)
+        hmin, hmax = min(hits), max(hits)
+        zmin, zmax = min(zs), max(zs)
+        attr = "_m2_short" if short else "_m2_long"
+        for c in combos:
+            r = ret_of(c)
+            if r <= 0:
+                s = -1.0
+            else:
+                s = (_M2_W_RET * _norm(r, rmin, rmax)
+                     + _M2_W_HIT * _norm(hit_of(c), hmin, hmax)
+                     + _M2_W_ZONE * _norm(zon_of(c), zmin, zmax))
+            setattr(c, attr, s)
+
+
 def combo_quality(combo: "CombinationResult", short: bool = False,
                   halflife: float = None, n_bars: int = None) -> float:
-    """Score de qualité = rendement × réussite × bonus_zones (Méthode 1).
-    Récompense À LA FOIS un bon rendement, une bonne réussite ET un bon nombre de
-    zones — mais le nombre de zones est un BONUS (0.8→1.0), jamais un couperet :
-    une combinaison exceptionnelle apparaît même avec peu de zones. Les filtres
-    --reussite / --zone servent d'ajustement dur.
+    """Score de qualité d'une combinaison (méthode selon `_QUALITY_METHOD`).
     Si `halflife`/`n_bars` sont fournis → pondération par la récence (mode --recent)."""
     if halflife and n_bars:
         zones = combo.bearish_zones if short else combo.zones
@@ -297,6 +333,11 @@ def combo_quality(combo: "CombinationResult", short: bool = False,
         ret = combo.total_return_pct
         hit = combo.hit_rate
         n = combo.n_zones
+    if _QUALITY_METHOD == 2:
+        s = getattr(combo, "_m2_short" if short else "_m2_long", None)
+        if s is not None:
+            return s
+        # fallback (score M2 non pré-calculé) : approximation par la méthode 1
     return ret * max(hit, 0.0) / 100.0 * _zone_bonus(n)
 
 
@@ -535,6 +576,12 @@ def analyze_combinations(
             cr = _build_combo(prices, list(combo), mask_cache)
             if cr is not None:
                 all_valid.append(cr)
+
+    # Méthode 2 : pré-calcule la note pondérée /100 (rendement/réussite/zones
+    # normalisés sur TOUT le lot). Doit être fait ici, sur l'ensemble complet,
+    # AVANT tout filtrage/sélection, pour que la normalisation soit cohérente.
+    if _QUALITY_METHOD == 2:
+        _assign_m2_scores(all_valid)
 
     # Filtre --zone : nombre MINIMUM de zones par combinaison (long: zones
     # haussières ; short: zones baissières). Plus de zones = statistique plus
