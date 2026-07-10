@@ -588,8 +588,11 @@ Exemples :
     if args.output:
         report_path = Path(args.output)
     else:
+        import re as _re
         _tag = f"start-{args.start}" if args.start else args.period
-        report_path = Path(f"rapport_{ticker}_{_tag}.html")
+        # Nettoie les caractères interdits dans un nom de fichier (Windows : / \ : * ? " < > |)
+        _safe = _re.sub(r'[\\/:*?"<>|]+', "-", f"rapport_{ticker}_{_tag}")
+        report_path = Path(f"{_safe}.html")
 
     report_path.write_text(html, encoding="utf-8")
 
