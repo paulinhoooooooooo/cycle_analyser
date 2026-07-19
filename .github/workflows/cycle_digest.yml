@@ -1,0 +1,31 @@
+name: Récap Cycles (prochains)
+
+on:
+  schedule:
+    # Tous les matins à 07h00 UTC (09h Paris été / 08h hiver) — équivalent
+    # automatique de la commande /prochains, 7j/7 (crypto incluse).
+    - cron: '0 7 * * *'
+  workflow_dispatch:   # bouton « Run workflow » pour l'obtenir à la demande
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+
+      - name: Envoyer le récap des prochains événements
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python send_digest.py
