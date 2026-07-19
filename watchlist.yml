@@ -42,8 +42,8 @@ alerts:
     direction: long
 
   - ticker: MRNA
-    cycles: "86,26"
-    period: 5y
+    cycles: "98,133,48"
+    start: 01/01/2022
     interval: 1d
     direction: long
 
