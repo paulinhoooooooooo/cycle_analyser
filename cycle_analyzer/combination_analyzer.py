@@ -666,13 +666,18 @@ def analyze_combinations(
                 out.append(c)
             return out
 
-        results[2] = _all_passing(pairs, _qual, _hit_l)
-        results[3] = _all_passing(triples, _qual, _hit_l)
+        _ret_l = lambda c: c.total_return_pct
+        _zon_l = lambda c: c.n_zones
+        _ret_s = lambda c: -c.bearish_total_return_pct
+        _zon_s = lambda c: len(c.bearish_zones)
+
+        results[2] = _best_variants(_all_passing(pairs, _qual, _hit_l), _ret_l, _hit_l, _zon_l)
+        results[3] = _best_variants(_all_passing(triples, _qual, _hit_l), _ret_l, _hit_l, _zon_l)
         # "court" est un simple re-découpage des paires/triples → redondant quand on
         # montre déjà TOUT ; on le vide pour éviter les doublons dans le récap.
         results["court"] = []
-        results["short_2"] = _all_passing(pairs_s, _qual_short, _hit_s)
-        results["short_3"] = _all_passing(triples_s, _qual_short, _hit_s)
+        results["short_2"] = _best_variants(_all_passing(pairs_s, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)
+        results["short_3"] = _best_variants(_all_passing(triples_s, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)
         results["diverse"] = pick_diverse(results[2] + results[3] + results["court"],
                                           score=_qual, hit=_hit_l, n=3, min_hit=0.0, cross_dedup=True)
         return results
@@ -718,6 +723,33 @@ def _combos_too_similar(periods_a: List[int], periods_b: List[int]) -> bool:
         if abs(pa - pb) >= threshold:
             return False
     return True
+
+
+def _best_variants(combos_list, ret_of, hit_of, zon_of):
+    """Élimine les VARIANTES DOMINÉES parmi les combinaisons quasi-identiques
+    (tous les cycles à ~18% près, ex: 801+133 / 800+133 / 799+132).
+
+    Une combinaison est MASQUÉE uniquement si, parmi les combinaisons déjà
+    GARDÉES qui lui sont similaires, il en existe une au moins aussi bonne en
+    RENDEMENT, une au moins aussi bonne en RÉUSSITE et une au moins aussi
+    bonne en ZONES (pas forcément la même). Autrement dit, par groupe de
+    cycles proches, on ne garde que les championnes de chaque dimension.
+
+    Ex: 801+133 (577%, 80%, 10z) gardée ; 800+133 (561%, 80%, 10z) masquée
+    (dominée sur tout) ; 801+132 (559%, 90%, 10z) gardée (meilleure réussite).
+    `combos_list` doit être trié par score décroissant."""
+    kept = []
+    for c in combos_list:
+        sims = [k for k in kept if _combos_too_similar(c.periods, k.periods)]
+        dominated = (
+            bool(sims)
+            and any(ret_of(k) >= ret_of(c) for k in sims)
+            and any(hit_of(k) >= hit_of(c) for k in sims)
+            and any(zon_of(k) >= zon_of(c) for k in sims)
+        )
+        if not dominated:
+            kept.append(c)
+    return kept
 
 
 def get_custom_combination(prices: np.ndarray, selected_cycles: List[CycleInfo]) -> CombinationResult:
