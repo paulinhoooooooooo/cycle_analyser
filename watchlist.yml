@@ -41,8 +41,14 @@ alerts:
     interval: 1d
     direction: long
 
-  - ticker: MRNA
+  - ticker: MRNA            # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "98,133,48"
+    start: 01/01/2022
+    interval: 1d
+    direction: long
+
+  - ticker: MRNA            # 🥈 #2 — combinaison secondaire en long
+    cycles: "126,88"
     start: 01/01/2022
     interval: 1d
     direction: long
