@@ -2,9 +2,11 @@ name: Alertes Cycles
 
 on:
   schedule:
-    # Tous les jours à 21h30 UTC (23h30 Paris été) — 7j/7 pour couvrir aussi
-    # les cryptos (BTC, ADA…) qui se négocient le week-end.
-    - cron: '30 21 * * *'
+    # 19h00 UTC = 21h00 à Paris l'été (heure d'été CEST, UTC+2),
+    #             20h00 à Paris l'hiver (CET, UTC+1 — GitHub ne gère pas le
+    #             changement d'heure, l'heure est fixe en UTC).
+    # 7j/7 pour couvrir aussi les cryptos (BTC, ADA…) négociées le week-end.
+    - cron: '0 19 * * *'
   workflow_dispatch:   # déclenchement manuel depuis l'interface GitHub
 
 jobs:
