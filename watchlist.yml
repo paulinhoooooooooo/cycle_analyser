@@ -53,6 +53,12 @@ alerts:
     interval: 1d
     direction: long
 
+  - ticker: KO
+    cycles: "82,162"
+    start: 01/01/2016
+    interval: 1d
+    direction: long
+
   - ticker: ADA-USD
     cycles: "286,164,85"
     period: 5y
