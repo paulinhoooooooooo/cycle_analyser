@@ -41,19 +41,11 @@ alerts:
     interval: 1d
     direction: long
 
-  - ticker: SOXQ
-    cycles: "121,80"
-    period: 5y
-    interval: 1d
-    direction: long
-
-
   - ticker: MRNA
     cycles: "86,26"
     period: 5y
     interval: 1d
     direction: long
-
 
   - ticker: ADA-USD
     cycles: "286,164,85"
