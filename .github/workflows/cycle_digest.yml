@@ -1,11 +1,9 @@
 name: Récap Cycles (prochains)
 
+# Pas d'envoi automatique : uniquement à la demande via le bouton « Run workflow »
+# (équivalent manuel de /prochains, pousse le récap complet sur Telegram).
 on:
-  schedule:
-    # Tous les matins à 07h00 UTC (09h Paris été / 08h hiver) — équivalent
-    # automatique de la commande /prochains, 7j/7 (crypto incluse).
-    - cron: '0 7 * * *'
-  workflow_dispatch:   # bouton « Run workflow » pour l'obtenir à la demande
+  workflow_dispatch:
 
 jobs:
   send-digest:
