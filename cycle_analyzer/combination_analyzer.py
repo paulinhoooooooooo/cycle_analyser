@@ -543,6 +543,7 @@ def analyze_combinations(
     recency_halflife: float = None,
     min_hit: float = None,
     min_zones: int = None,
+    min_return: float = None,
 ) -> Dict:
     """
     Returns combinations grouped by size, with separate long and short rankings:
@@ -609,12 +610,26 @@ def analyze_combinations(
     if _QUALITY_METHOD == 2:
         _assign_m2_scores(all_valid)
 
-    # Filtre --zone : nombre MINIMUM de zones par combinaison (long: zones
-    # haussières ; short: zones baissières). Plus de zones = statistique plus
-    # fiable, mais des exigences trop hautes excluent les cycles longs.
-    if min_zones:
-        valid_long = [c for c in all_valid if c.n_zones >= min_zones]
-        valid_short = [c for c in all_valid if len(c.bearish_zones) >= min_zones]
+    # Filtres durs optionnels appliqués séparément en long et en short :
+    #   --zone      : nombre MINIMUM de zones (long: haussières ; short: baissières)
+    #   --rendement : rendement total MINIMUM en % (long: haussier ; short: gain du short)
+    def _keep_long(c):
+        if min_zones and c.n_zones < min_zones:
+            return False
+        if min_return is not None and c.total_return_pct < min_return:
+            return False
+        return True
+
+    def _keep_short(c):
+        if min_zones and len(c.bearish_zones) < min_zones:
+            return False
+        if min_return is not None and (-c.bearish_total_return_pct) < min_return:
+            return False
+        return True
+
+    if min_zones or min_return is not None:
+        valid_long = [c for c in all_valid if _keep_long(c)]
+        valid_short = [c for c in all_valid if _keep_short(c)]
     else:
         valid_long = valid_short = all_valid
 
