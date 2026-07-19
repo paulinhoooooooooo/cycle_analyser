@@ -651,8 +651,9 @@ def analyze_combinations(
     # EXACTS (mêmes cycles) sont retirés.
     filtered_mode = (min_return is not None) or (min_hit is not None) or (min_zones is not None)
     if filtered_mode:
-        _CAP = 25
-
+        # AUCUN plafond : toutes les combinaisons qui passent sont retournées.
+        # (Les tableaux du rapport sont du texte → pas de problème de taille ;
+        # seuls les GRAPHIQUES sont plafonnés, côté report_generator.)
         def _all_passing(seq, score, hit):
             out, seen = [], set()
             for c in sorted(seq, key=score, reverse=True):
@@ -663,8 +664,6 @@ def analyze_combinations(
                     continue
                 seen.add(key)
                 out.append(c)
-                if len(out) >= _CAP:
-                    break
             return out
 
         results[2] = _all_passing(pairs, _qual, _hit_l)
