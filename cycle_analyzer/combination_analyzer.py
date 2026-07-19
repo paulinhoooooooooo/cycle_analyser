@@ -642,6 +642,42 @@ def analyze_combinations(
     _hit_l = lambda c: c.hit_rate
     _hit_s = lambda c: c.bearish_hit_rate
 
+    # ── MODE FILTRE ────────────────────────────────────────────────────────────
+    # Quand l'utilisateur restreint EXPLICITEMENT le champ (--rendement / --reussite
+    # / --zone), on montre TOUTES les combinaisons qui passent, classées par
+    # rendement décroissant, SANS plafond ni curation (ni déduplication des
+    # quasi-doublons, ni logique de « reprise »). Un filtre ne doit jamais cacher
+    # une combinaison qui remplit pourtant les conditions. Seuls les doublons
+    # EXACTS (mêmes cycles) sont retirés.
+    filtered_mode = (min_return is not None) or (min_hit is not None) or (min_zones is not None)
+    if filtered_mode:
+        _CAP = 25
+
+        def _all_passing(seq, score, hit):
+            out, seen = [], set()
+            for c in sorted(seq, key=score, reverse=True):
+                if score(c) <= 0 or hit(c) < mh:
+                    continue
+                key = tuple(sorted(c.periods))
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(c)
+                if len(out) >= _CAP:
+                    break
+            return out
+
+        results[2] = _all_passing(pairs, _qual, _hit_l)
+        results[3] = _all_passing(triples, _qual, _hit_l)
+        # "court" est un simple re-découpage des paires/triples → redondant quand on
+        # montre déjà TOUT ; on le vide pour éviter les doublons dans le récap.
+        results["court"] = []
+        results["short_2"] = _all_passing(pairs_s, _qual_short, _hit_s)
+        results["short_3"] = _all_passing(triples_s, _qual_short, _hit_s)
+        results["diverse"] = pick_diverse(results[2] + results[3] + results["court"],
+                                          score=_qual, hit=_hit_l, n=3, min_hit=0.0, cross_dedup=True)
+        return results
+
     # Classement PUR par équilibre rendement × réussite : un petit gain de rendement
     # ne compense pas une réussite faible ; un très gros rendement, oui.
     results[2] = pick_diverse(pairs, score=_qual, hit=_hit_l,

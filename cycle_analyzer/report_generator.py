@@ -299,14 +299,29 @@ def generate_report(
     price_first = prices[0]
     total_perf = (price_last - price_first) / price_first * 100
 
-    # Flatten long and short combo lists (short may contain different combos than long)
-    all_combos = (combinations.get(2, []) + combinations.get(3, [])
-                  + combinations.get("court", []))
+    # Sections avec GRAPHIQUES : plafonnées à _CHART_CAP par catégorie. Le récap
+    # (tableaux plus bas, sans image) montre TOUTES les combinaisons, lui.
+    _CHART_CAP = 8
+    sec2 = combinations.get(2, [])[:_CHART_CAP]
+    sec3 = combinations.get(3, [])[:_CHART_CAP]
+    secCourt = combinations.get("court", [])[:_CHART_CAP]
+
     short_combos = combinations.get("short_2", []) + combinations.get("short_3", [])
-    # Unique set for image generation (avoid rendering same combo twice)
+    # 3 meilleures combinaisons SHORT (par rendement short), dédupliquées
+    short_top, _seen_s = [], set()
+    for r in sorted(short_combos, key=lambda r: r.short_compound_return_pct, reverse=True):
+        k = tuple(sorted(r.periods))
+        if k in _seen_s:
+            continue
+        _seen_s.add(k)
+        short_top.append(r)
+        if len(short_top) >= 3:
+            break
+
+    # Un seul graphique par combinaison réellement affichée (sections uniquement)
     seen_ids: set = set()
     all_unique_combos: List[CombinationResult] = []
-    for c in all_combos + short_combos:
+    for c in sec2 + sec3 + secCourt + short_top:
         if id(c) not in seen_ids:
             all_unique_combos.append(c)
             seen_ids.add(id(c))
@@ -365,22 +380,19 @@ def generate_report(
             html_out += (_combo_card_short_html if short_mode else _combo_card_html)(combo, img, rank)
         return html_out
 
-    combos_html = _section_html(combinations.get(2, []), "Top 3 — Combinaisons de 2 cycles")
-    combos_html += _section_html(combinations.get(3, []), "Top 3 — Combinaisons de 3 cycles")
-    if combinations.get("court"):
-        combos_html += _section_html(combinations.get("court", []),
-                                     "Top 3 — Combinaisons de cycles courts (&lt; 200 jours)")
+    # En mode filtre (--rendement / --reussite / --zone), on affiche TOUTES les
+    # combinaisons qui passent, pas seulement un top 3 → les titres s'adaptent.
+    _filtered = any(tag in options_note for tag in ("--rendement", "--reussite", "--zone"))
+    _p2 = "Combinaisons de 2 cycles (toutes celles qui passent le filtre)" if _filtered else "Top 3 — Combinaisons de 2 cycles"
+    _p3 = "Combinaisons de 3 cycles (toutes celles qui passent le filtre)" if _filtered else "Top 3 — Combinaisons de 3 cycles"
+    _pc = "Combinaisons de cycles courts (&lt; 200 jours) — toutes celles qui passent" if _filtered else "Top 3 — Combinaisons de cycles courts (&lt; 200 jours)"
 
-    # Short section : les 3 MEILLEURES combinaisons pour le short (pas 6)
-    short_top, _seen_s = [], set()
-    for r in sorted(short_combos, key=lambda r: r.short_compound_return_pct, reverse=True):
-        k = tuple(sorted(r.periods))
-        if k in _seen_s:
-            continue
-        _seen_s.add(k)
-        short_top.append(r)
-        if len(short_top) >= 3:
-            break
+    combos_html = _section_html(sec2, _p2)
+    combos_html += _section_html(sec3, _p3)
+    if secCourt:
+        combos_html += _section_html(secCourt, _pc)
+
+    # Short section : les 3 MEILLEURES combinaisons pour le short (calculées plus haut)
     combos_html += _section_html(short_top, "Top 3 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
 
     # Tableau récapitulatif du HAUT : combinaisons long proposées (2 + 3 + courts).
