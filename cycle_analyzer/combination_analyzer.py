@@ -265,10 +265,12 @@ def _weighted_zone_score(zones: List[ZoneResult], N: int, halflife: float,
 
 
 # ── Méthode de calcul du score de qualité ─────────────────────────────────────
+#   0 = rendement % PUR (formule de départ) : on classe uniquement sur le
+#       rendement total, sans tenir compte du nombre de zones ni de la réussite
 #   1 = bonus doux (rendement TOTAL × réussite × bonus_zones)
 #   2 = note pondérée /100 (rendement, réussite, zones normalisés sur le lot)
 #   3 = edge par zone × réussite × √(nb zones)  — échelle ABSOLUE, stable
-_QUALITY_METHOD = 3
+_QUALITY_METHOD = 0
 
 # Méthode 1 : bonus doux lié au nombre de zones
 _ZONE_BONUS_FLOOR = 0.80    # score minimal conservé même avec très peu de zones
@@ -348,6 +350,9 @@ def combo_quality(combo: "CombinationResult", short: bool = False,
         ret = combo.total_return_pct
         hit = combo.hit_rate
         n = combo.n_zones
+    if _QUALITY_METHOD == 0:
+        # Rendement % PUR : ni les zones ni la réussite n'entrent dans le classement.
+        return ret
     if _QUALITY_METHOD == 3:
         # rendement MOYEN par zone (edge par trade), pas la somme
         avg_ret = (ret / n) if n > 0 else 0.0
@@ -563,7 +568,9 @@ def analyze_combinations(
     # cycles (courts/moyens) pour qu'ils soient testés à égalité avec les longs
     # (ils sont souvent sous-représentés par la FFT).
     n_bars = len(prices)
-    mh = min_hit if min_hit is not None else _MIN_HIT_RATE   # seuil de réussite mini
+    # Par défaut AUCUN seuil de réussite (classement par rendement pur) ; le seuil
+    # ne s'applique QUE si l'utilisateur passe --reussite. Idem pour --zone.
+    mh = min_hit if min_hit is not None else 0.0
     for c in _return_scan_pool(prices, recency_halflife=recency_halflife):
         if c.period not in seen_periods:
             pool.append(c)
