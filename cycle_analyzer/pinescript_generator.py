@@ -105,6 +105,13 @@ hline(1,  "TOPPING",   color=color.new(color.gray, 50))
 hline(0,  "",          color=color.new(color.gray, 80))
 hline(-1, "BOTTOMING", color=color.new(color.gray, 50))
 
+// Espacement calendaire moyen REEL des barres (equivalent de avg_days du logiciel).
+// Sert a convertir les barres futures en date : s'adapte tout seul aux actions
+// (5j/7, ~1.45 j/barre) et aux cryptos (7j/7, ~1.0 j/barre).
+var int _firstBarTime = na
+if na(_firstBarTime)
+    _firstBarTime := time
+
 // ============================================
 // 4. FONCTIONS
 // ============================================
@@ -113,22 +120,22 @@ f_phase(_s, _sp) =>
     _s > 0.5 ? "TOPPING" : _s < -0.5 ? "BOTTOMING" : rising ? "RISING" : "FALLING"
 
 f_nextExtreme(_len, _anchor) =>
-    phaseNow = (float(bar_index) - float(_anchor)) % float(_len)
-    if phaseNow < 0.0
-        phaseNow := phaseNow + float(_len)
-    targetTop = float(_len) / 4.0
-    targetBot = float(_len) * 3.0 / 4.0
-    nTop = targetTop - phaseNow
-    if nTop <= 0.0
-        nTop := nTop + float(_len)
-    nBot = targetBot - phaseNow
-    if nBot <= 0.0
-        nBot := nBot + float(_len)
-    isTop = nTop < nBot
-    nBars = isTop ? nTop : nBot
-    calendarDays = nBars * 7.0 / 5.0
-    futureTime = time + int(calendarDays * 86400000.0)
-    icon = isTop ? "↓" : "↑"
+    // Sens actuel du cycle : difference DISCRETE osc(t) > osc(t-1),
+    // identique a _bars_to_next_transition du logiciel Python.
+    risingNow = math.sin(2*math.pi*(bar_index - _anchor)/_len) > math.sin(2*math.pi*(bar_index - 1 - _anchor)/_len)
+    int nBars = na
+    for k = 1 to int(2*_len) + 4
+        rNew = math.sin(2*math.pi*(bar_index + k - _anchor)/_len) > math.sin(2*math.pi*(bar_index + k - 1 - _anchor)/_len)
+        if na(nBars) and rNew != risingNow
+            nBars := k
+    nb = na(nBars) ? int(_len / 2) : nBars
+    // Barres futures -> date via l'espacement calendaire moyen REEL (comme le logiciel),
+    // arrondi au jour entier le plus proche (identique a int(round(bars*avg_days))).
+    avgBarMs = (time - _firstBarTime) / math.max(bar_index, 1)
+    futureDays = math.round(float(nb) * avgBarMs / 86400000.0)
+    futureTime = time + int(futureDays * 86400000.0)
+    // Cycle en hausse -> prochain extreme = PIC (baisse a venir, ↓) ; sinon CREUX (↑)
+    icon = risingNow ? "↓" : "↑"
     icon + " " + str.format_time(futureTime, "dd MMM")
 
 phase1 = f_phase(sine1, sine1[1])
@@ -361,26 +368,33 @@ hline(1,  "TOPPING",   color=color.new(color.gray, 50))
 hline(0,  "",          color=color.new(color.gray, 80))
 hline(-1, "BOTTOMING", color=color.new(color.gray, 50))
 
+// Espacement calendaire moyen REEL des barres (equivalent de avg_days du logiciel).
+// Sert a convertir les barres futures en date : s'adapte tout seul aux actions
+// (5j/7, ~1.45 j/barre) et aux cryptos (7j/7, ~1.0 j/barre).
+var int _firstBarTime = na
+if na(_firstBarTime)
+    _firstBarTime := time
+
 // ============================================
 // 4. FONCTIONS
 // ============================================
 f_nextExtreme(_len, _anchor) =>
-    phaseNow = (float(bar_index) - float(_anchor)) % float(_len)
-    if phaseNow < 0.0
-        phaseNow := phaseNow + float(_len)
-    targetTop = float(_len) / 4.0
-    targetBot = float(_len) * 3.0 / 4.0
-    nTop = targetTop - phaseNow
-    if nTop <= 0.0
-        nTop := nTop + float(_len)
-    nBot = targetBot - phaseNow
-    if nBot <= 0.0
-        nBot := nBot + float(_len)
-    isTop = nTop < nBot
-    nBars = isTop ? nTop : nBot
-    calendarDays = nBars * 7.0 / 5.0
-    futureTime = time + int(calendarDays * 86400000.0)
-    icon = isTop ? "↓" : "↑"
+    // Sens actuel du cycle : difference DISCRETE osc(t) > osc(t-1),
+    // identique a _bars_to_next_transition du logiciel Python.
+    risingNow = math.sin(2*math.pi*(bar_index - _anchor)/_len) > math.sin(2*math.pi*(bar_index - 1 - _anchor)/_len)
+    int nBars = na
+    for k = 1 to int(2*_len) + 4
+        rNew = math.sin(2*math.pi*(bar_index + k - _anchor)/_len) > math.sin(2*math.pi*(bar_index + k - 1 - _anchor)/_len)
+        if na(nBars) and rNew != risingNow
+            nBars := k
+    nb = na(nBars) ? int(_len / 2) : nBars
+    // Barres futures -> date via l'espacement calendaire moyen REEL (comme le logiciel),
+    // arrondi au jour entier le plus proche (identique a int(round(bars*avg_days))).
+    avgBarMs = (time - _firstBarTime) / math.max(bar_index, 1)
+    futureDays = math.round(float(nb) * avgBarMs / 86400000.0)
+    futureTime = time + int(futureDays * 86400000.0)
+    // Cycle en hausse -> prochain extreme = PIC (baisse a venir, ↓) ; sinon CREUX (↑)
+    icon = risingNow ? "↓" : "↑"
     icon + " " + str.format_time(futureTime, "dd MMM")
 
 // ============================================
@@ -572,26 +586,33 @@ hline(1,  "TOPPING",   color=color.new(color.gray, 50))
 hline(0,  "",          color=color.new(color.gray, 80))
 hline(-1, "BOTTOMING", color=color.new(color.gray, 50))
 
+// Espacement calendaire moyen REEL des barres (equivalent de avg_days du logiciel).
+// Sert a convertir les barres futures en date : s'adapte tout seul aux actions
+// (5j/7, ~1.45 j/barre) et aux cryptos (7j/7, ~1.0 j/barre).
+var int _firstBarTime = na
+if na(_firstBarTime)
+    _firstBarTime := time
+
 // ============================================
 // 4. FONCTIONS
 // ============================================
 f_nextExtreme(_len, _anchor) =>
-    phaseNow = (float(bar_index) - float(_anchor)) % float(_len)
-    if phaseNow < 0.0
-        phaseNow := phaseNow + float(_len)
-    targetTop = float(_len) / 4.0
-    targetBot = float(_len) * 3.0 / 4.0
-    nTop = targetTop - phaseNow
-    if nTop <= 0.0
-        nTop := nTop + float(_len)
-    nBot = targetBot - phaseNow
-    if nBot <= 0.0
-        nBot := nBot + float(_len)
-    isTop = nTop < nBot
-    nBars = isTop ? nTop : nBot
-    calendarDays = nBars * 7.0 / 5.0
-    futureTime = time + int(calendarDays * 86400000.0)
-    icon = isTop ? "↓" : "↑"
+    // Sens actuel du cycle : difference DISCRETE osc(t) > osc(t-1),
+    // identique a _bars_to_next_transition du logiciel Python.
+    risingNow = math.sin(2*math.pi*(bar_index - _anchor)/_len) > math.sin(2*math.pi*(bar_index - 1 - _anchor)/_len)
+    int nBars = na
+    for k = 1 to int(2*_len) + 4
+        rNew = math.sin(2*math.pi*(bar_index + k - _anchor)/_len) > math.sin(2*math.pi*(bar_index + k - 1 - _anchor)/_len)
+        if na(nBars) and rNew != risingNow
+            nBars := k
+    nb = na(nBars) ? int(_len / 2) : nBars
+    // Barres futures -> date via l'espacement calendaire moyen REEL (comme le logiciel),
+    // arrondi au jour entier le plus proche (identique a int(round(bars*avg_days))).
+    avgBarMs = (time - _firstBarTime) / math.max(bar_index, 1)
+    futureDays = math.round(float(nb) * avgBarMs / 86400000.0)
+    futureTime = time + int(futureDays * 86400000.0)
+    // Cycle en hausse -> prochain extreme = PIC (baisse a venir, ↓) ; sinon CREUX (↑)
+    icon = risingNow ? "↓" : "↑"
     icon + " " + str.format_time(futureTime, "dd MMM")
 
 // ============================================
