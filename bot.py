@@ -469,11 +469,18 @@ def main() -> None:
     app.add_handler(CommandHandler("start",     handle_prochains))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Job quotidien d'alerte proactive — 19h00 UTC (21h00 Paris été / 20h00 hiver)
-    app.job_queue.run_daily(
-        check_and_send_alerts,
-        time=_dt.time(19, 0, 0, tzinfo=_dt.timezone.utc),
-    )
+    # Job quotidien d'alerte proactive — 19h00 UTC (21h00 Paris été / 20h00 hiver).
+    # DÉSACTIVABLE : si les alertes sont déjà envoyées par GitHub Actions
+    # (check_alerts.py), mettre DISABLE_DAILY_ALERTS=1 pour éviter les doublons.
+    # Le bot ne fait alors QUE répondre à /prochains.
+    _disable_daily = os.environ.get("DISABLE_DAILY_ALERTS", "").strip().lower() in ("1", "true", "yes", "oui")
+    if _disable_daily:
+        print("ℹ️  Alertes quotidiennes désactivées (DISABLE_DAILY_ALERTS) — /prochains seulement.")
+    else:
+        app.job_queue.run_daily(
+            check_and_send_alerts,
+            time=_dt.time(19, 0, 0, tzinfo=_dt.timezone.utc),
+        )
 
     print("Bot démarré. Envoyez /prochains dans Telegram pour voir les cycles.")
     app.run_polling(drop_pending_updates=True)

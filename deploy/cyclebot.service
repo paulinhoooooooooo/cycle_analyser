@@ -1,0 +1,19 @@
+[Unit]
+Description=Bot Telegram Cycles de marché (/prochains)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Utilisateur/dossier créés par setup_oracle.sh
+User=ubuntu
+WorkingDirectory=/home/ubuntu/cycle_analyser
+# Le token et les réglages sont dans ce fichier (hors Git)
+EnvironmentFile=/home/ubuntu/cycle_analyser/cyclebot.env
+ExecStart=/home/ubuntu/cycle_analyser/venv/bin/python bot.py
+# Redémarre tout seul si le bot plante ou après un reboot
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
