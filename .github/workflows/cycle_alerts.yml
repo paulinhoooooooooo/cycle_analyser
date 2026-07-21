@@ -2,11 +2,12 @@ name: Alertes Cycles
 
 on:
   schedule:
-    # 19h00 UTC = 21h00 à Paris l'été (heure d'été CEST, UTC+2),
-    #             20h00 à Paris l'hiver (CET, UTC+1 — GitHub ne gère pas le
-    #             changement d'heure, l'heure est fixe en UTC).
+    # 19h07 UTC ≈ 21h07 à Paris l'été (CEST, UTC+2), 20h07 l'hiver (CET, UTC+1).
+    # Minute impaire (07) volontaire : les crons « à l'heure pile » sont les plus
+    # encombrés chez GitHub et partent souvent avec du retard ; une minute décalée
+    # réduit ce retard. GitHub ne gère pas le changement d'heure (UTC fixe).
     # 7j/7 pour couvrir aussi les cryptos (BTC, ADA…) négociées le week-end.
-    - cron: '0 19 * * *'
+    - cron: '7 19 * * *'
   workflow_dispatch:   # déclenchement manuel depuis l'interface GitHub
 
 jobs:
