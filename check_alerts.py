@@ -89,11 +89,11 @@ def check_ticker(
     cycles: List[CycleInfo] = []
     for p in periods:
         A, B, amp = _fit_sine(detrended, float(p))
-        state, osc_val, direction = _phase_state(A, B, float(p), N - 1)
+        state, osc_val, cur_dir = _phase_state(A, B, float(p), N - 1)
         cycles.append(CycleInfo(
             period=p, period_exact=float(p),
             amplitude=round(amp * prices[-1], 2), strength=1.0, stability=0.0,
-            phase_state=state, current_value=osc_val, current_direction=direction,
+            phase_state=state, current_value=osc_val, current_direction=cur_dir,
             oscillator=np.array([]), r_squared=0.0, amplitude_log=amp,
             coeff_a=A, coeff_b=B,
         ))
