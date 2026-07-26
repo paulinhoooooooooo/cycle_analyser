@@ -82,6 +82,13 @@ alerts:
     start: 01/01/2012
     interval: 1d
     direction: long
+    
+  - ticker: CAT            
+    cycles: "179"
+    start: 01/01/2016
+    interval: 1d
+    direction: long
+    
     --------------------------------------------------------------
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
