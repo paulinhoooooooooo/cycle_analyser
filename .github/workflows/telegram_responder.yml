@@ -1,0 +1,36 @@
+name: Répondeur /prochains
+
+# Répond à /prochains dans Telegram SANS serveur allumé en permanence :
+# un réveil toutes les 5 min (le minimum autorisé par GitHub). La réponse
+# arrive donc en général en 5 à 10 min. Repo public → minutes illimitées.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:   # bouton « Run » pour tester tout de suite
+
+# Un seul réveil à la fois (évite deux consommateurs getUpdates simultanés)
+concurrency:
+  group: telegram-responder
+  cancel-in-progress: false
+
+jobs:
+  respond:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+
+      - name: Répondre à /prochains
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        run: python telegram_responder.py

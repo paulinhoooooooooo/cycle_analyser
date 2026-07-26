@@ -88,8 +88,7 @@ alerts:
     start: 01/01/2016
     interval: 1d
     direction: long
-    
-    --------------------------------------------------------------
+
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
     start: 10/04/2020
