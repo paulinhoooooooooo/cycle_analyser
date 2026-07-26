@@ -671,13 +671,17 @@ def analyze_combinations(
         _ret_s = lambda c: -c.bearish_total_return_pct
         _zon_s = lambda c: len(c.bearish_zones)
 
-        results[2] = _best_variants(_all_passing(pairs, _qual, _hit_l), _ret_l, _hit_l, _zon_l)
-        results[3] = _best_variants(_all_passing(triples, _qual, _hit_l), _ret_l, _hit_l, _zon_l)
+        # Au plus 5 combinaisons par catégorie : les 5 MEILLEURES en rendement.
+        # (_all_passing est déjà trié par rendement décroissant, _best_variants
+        # conserve cet ordre → [:_FILTER_MAX] = les 5 meilleures.)
+        _FILTER_MAX = 5
+        results[2] = _best_variants(_all_passing(pairs, _qual, _hit_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
+        results[3] = _best_variants(_all_passing(triples, _qual, _hit_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
         # "court" est un simple re-découpage des paires/triples → redondant quand on
         # montre déjà TOUT ; on le vide pour éviter les doublons dans le récap.
         results["court"] = []
-        results["short_2"] = _best_variants(_all_passing(pairs_s, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)
-        results["short_3"] = _best_variants(_all_passing(triples_s, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)
+        results["short_2"] = _best_variants(_all_passing(pairs_s, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
+        results["short_3"] = _best_variants(_all_passing(triples_s, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
         results["diverse"] = pick_diverse(results[2] + results[3] + results["court"],
                                           score=_qual, hit=_hit_l, n=3, min_hit=0.0, cross_dedup=True)
         return results
