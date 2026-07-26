@@ -341,12 +341,19 @@ def generate_report(
             all_unique_combos.append(c)
             seen_ids.add(id(c))
 
-    # ── Build chart images ────────────────────────────────────────────────────
-    # Cycles simples : on n'affiche (stats + graphiques) QUE ceux dont la réussite
-    # est >= 80%. Les autres ne sont pas montrés en détail.
-    top3 = [c for c in cycles if c.hit_rate >= 80.0][:3]
-    # Compute single-cycle stats (bullish/bearish totals) for each shown cycle
-    top3_combos = [get_custom_combination(prices, [c]) for c in top3]
+    # ── Cycles simples affichés (stats + graphiques) ───────────────────────────
+    # COHÉRENTS avec le récap :
+    #  - mode filtre : exactement les cycles simples qui PASSENT le filtre
+    #    (results[1]), classés par rendement — les mêmes que le tableau ;
+    #  - sinon (défaut) : les cycles simples à réussite >= 80%.
+    _filtered_singles = combinations.get(1, [])
+    _cyc_by_period = {c.period: c for c in cycles}
+    if _filtered_singles:
+        top3 = [_cyc_by_period.get(sc.periods[0], sc.cycles[0]) for sc in _filtered_singles]
+        top3_combos = list(_filtered_singles)
+    else:
+        top3 = [c for c in cycles if c.hit_rate >= 80.0][:3]
+        top3_combos = [get_custom_combination(prices, [c]) for c in top3]
     imgs_top3 = [fig_to_base64(plot_single_cycle(prices, dates, c, ticker)) for c in top3]
 
     # ── Summary data: jusqu'à 5 combos variées (cycles simples non répétés) ──
@@ -359,8 +366,9 @@ def generate_report(
 
     # ── HTML ──────────────────────────────────────────────────────────────────
     top3_html = ""
-    for c, sc, img in zip(top3, top3_combos, imgs_top3):
+    for _idx, (c, sc, img) in enumerate(zip(top3, top3_combos, imgs_top3), 1):
         label, bg, fg = _PHASE_BADGE.get(c.phase_state, ("—", "#21262d", "#c9d1d9"))
+        _rank = getattr(c, "rank", None) or _idx
         short_total = -sc.bearish_total_return_pct
         short_col = "green" if short_total >= 0 else "red"
         bull_s = f"↑ {sc.total_return_pct:+.1f}% haussier"
@@ -374,7 +382,7 @@ def generate_report(
         top3_html += f"""
         <div class="card">
           <div class="card-header">
-            <span class="rank-badge">#{c.rank}</span>
+            <span class="rank-badge">#{_rank}</span>
             <span class="combo-title">Cycle {c.period} barres</span>
             <span class="badge" style="background:{bg}33;border:1px solid {fg};color:{fg}">{label}</span>
             <span class="stat-chip">Amp: {c.amplitude:,.2f}</span>
@@ -390,8 +398,10 @@ def generate_report(
           <img src="data:image/png;base64,{img}" class="chart-img" loading="lazy">
         </div>"""
 
-    # Section cycles simples : uniquement si au moins un cycle a >= 80% de réussite
-    singles_html = (f'<h2>Cycles simples (réussite ≥ 80%)</h2>{top3_html}'
+    # Section cycles simples : titre selon le mode (filtre vs réussite >= 80%)
+    _singles_title = ("Cycles simples (qui passent le filtre)" if _filtered_singles
+                      else "Cycles simples (réussite ≥ 80%)")
+    singles_html = (f'<h2>{_singles_title}</h2>{top3_html}'
                     if top3_html.strip() else "")
 
     def _section_html(combo_list: List[CombinationResult], title: str, short_mode: bool = False) -> str:
