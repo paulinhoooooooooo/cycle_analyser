@@ -728,15 +728,18 @@ def analyze_combinations(
 
     # Cycles SIMPLES (1 cycle) proposés dans le récap, même sans filtre :
     # réussite >= 80%, les top_n_per_size meilleurs par rendement.
+    # Construits depuis le POOL COMPLET (FFT + scan par rendement) — comme en mode
+    # filtre — pour ne jamais rater un cycle fort trouvé par le scan (ex: 178).
+    # La réussite est jugée sur le combo lui-même (cr.hit_rate), car les cycles du
+    # scan n'ont pas de hit_rate pré-calculé sur l'objet CycleInfo.
     _singles = []
-    for c in cycles:
-        if getattr(c, "hit_rate", 0.0) is None or getattr(c, "hit_rate", 0.0) < 80.0:
-            continue
+    for c in pool:
         cr = _build_combo(prices, [c], mask_cache)
-        if cr is not None and cr.total_return_pct > 0:
+        if cr is not None and cr.total_return_pct > 0 and cr.hit_rate >= 80.0:
             _singles.append(cr)
     _singles.sort(key=lambda r: r.total_return_pct, reverse=True)
-    results[1] = _singles[:top_n_per_size]
+    results[1] = _best_variants(_singles, lambda c: c.total_return_pct,
+                                lambda c: c.hit_rate, lambda c: c.n_zones)[:top_n_per_size]
 
     # Résumé du haut : les 3 meilleures COMBINAISONS (jamais un cycle simple).
     results["diverse"] = pick_diverse(results[2] + results[3] + results["court"],
