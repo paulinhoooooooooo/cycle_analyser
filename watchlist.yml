@@ -59,9 +59,9 @@ alerts:
     interval: 1d
     direction: long
 
-  - ticker: ADA-USD
-    cycles: "286,164,85"
-    period: 5y
+  - ticker: UI
+    cycles: "147"
+    start: 14/10/2011
     interval: 1d
     direction: long
 
@@ -107,6 +107,12 @@ alerts:
     start: 10/04/2020
     interval: 1d
     direction: short
+
+  - ticker: ADA-USD
+    cycles: "286,164,85"
+    period: 5y
+    interval: 1d
+    direction: long
 
   # Exemple avec début FIXE : le passé ne bouge plus, cycles reproductibles.
   # Décommente et adapte (ici MRNA figé au 01/01/2021 au lieu de la fenêtre 5y).
