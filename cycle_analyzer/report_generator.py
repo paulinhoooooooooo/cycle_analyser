@@ -349,11 +349,15 @@ def generate_report(
     _filtered_singles = combinations.get(1, [])
     _cyc_by_period = {c.period: c for c in cycles}
     if _filtered_singles:
+        # déjà classés par rendement décroissant (results[1])
         top3 = [_cyc_by_period.get(sc.periods[0], sc.cycles[0]) for sc in _filtered_singles]
         top3_combos = list(_filtered_singles)
     else:
-        top3 = [c for c in cycles if c.hit_rate >= 80.0][:3]
-        top3_combos = [get_custom_combination(prices, [c]) for c in top3]
+        # cycles simples à réussite >= 80%, classés par RENDEMENT décroissant (top 3)
+        _hi = [(c, get_custom_combination(prices, [c])) for c in cycles if c.hit_rate >= 80.0]
+        _hi.sort(key=lambda x: x[1].total_return_pct, reverse=True)
+        top3 = [c for c, _ in _hi[:3]]
+        top3_combos = [sc for _, sc in _hi[:3]]
     imgs_top3 = [fig_to_base64(plot_single_cycle(prices, dates, c, ticker)) for c in top3]
 
     # ── Summary data: jusqu'à 5 combos variées (cycles simples non répétés) ──
@@ -368,7 +372,7 @@ def generate_report(
     top3_html = ""
     for _idx, (c, sc, img) in enumerate(zip(top3, top3_combos, imgs_top3), 1):
         label, bg, fg = _PHASE_BADGE.get(c.phase_state, ("—", "#21262d", "#c9d1d9"))
-        _rank = getattr(c, "rank", None) or _idx
+        _rank = _idx   # numérotation = ordre d'affichage (par rendement décroissant)
         short_total = -sc.bearish_total_return_pct
         short_col = "green" if short_total >= 0 else "red"
         bull_s = f"↑ {sc.total_return_pct:+.1f}% haussier"
