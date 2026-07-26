@@ -695,7 +695,9 @@ def analyze_combinations(
         results["short_1"] = _best_variants(_all_passing(singles_short, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
         results["short_2"] = _best_variants(_all_passing(pairs_s, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
         results["short_3"] = _best_variants(_all_passing(triples_s, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
-        results["diverse"] = pick_diverse(results[1] + results[2] + results[3],
+        # Le résumé « TOP 3 MEILLEURES COMBINAISONS » ne montre QUE des combinaisons
+        # (2-3 cycles), jamais un cycle unique — results[1] est volontairement exclu.
+        results["diverse"] = pick_diverse(results[2] + results[3],
                                           score=_qual, hit=_hit_l, n=3, min_hit=0.0, cross_dedup=True)
         return results
 
