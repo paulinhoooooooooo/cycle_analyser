@@ -726,7 +726,19 @@ def analyze_combinations(
     results["court"] = pick_diverse(short_only, score=_qual, hit=_hit_l,
                                     n=top_n_per_size, min_hit=mh, cross_dedup=True)
 
-    # Résumé du haut : les 3 meilleures (dédoublonnées à travers les tailles).
+    # Cycles SIMPLES (1 cycle) proposés dans le récap, même sans filtre :
+    # réussite >= 80%, les top_n_per_size meilleurs par rendement.
+    _singles = []
+    for c in cycles:
+        if getattr(c, "hit_rate", 0.0) is None or getattr(c, "hit_rate", 0.0) < 80.0:
+            continue
+        cr = _build_combo(prices, [c], mask_cache)
+        if cr is not None and cr.total_return_pct > 0:
+            _singles.append(cr)
+    _singles.sort(key=lambda r: r.total_return_pct, reverse=True)
+    results[1] = _singles[:top_n_per_size]
+
+    # Résumé du haut : les 3 meilleures COMBINAISONS (jamais un cycle simple).
     results["diverse"] = pick_diverse(results[2] + results[3] + results["court"],
                                       score=_qual, hit=_hit_l, n=3, min_hit=0.0, cross_dedup=True)
 

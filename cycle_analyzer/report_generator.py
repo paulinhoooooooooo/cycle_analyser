@@ -346,18 +346,14 @@ def generate_report(
     #  - mode filtre : exactement les cycles simples qui PASSENT le filtre
     #    (results[1]), classés par rendement — les mêmes que le tableau ;
     #  - sinon (défaut) : les cycles simples à réussite >= 80%.
-    _filtered_singles = combinations.get(1, [])
+    # Y a-t-il un filtre actif ? (pour le titre de la section cycles simples)
+    _filtered = any(tag in options_note for tag in ("--rendement", "--reussite", "--zone", "--court"))
+    # Cycles simples affichés = results[1] (construit dans les deux modes, classé par
+    # rendement) → cartes et récap montrent EXACTEMENT les mêmes cycles simples.
+    _single_combos = combinations.get(1, [])
     _cyc_by_period = {c.period: c for c in cycles}
-    if _filtered_singles:
-        # déjà classés par rendement décroissant (results[1])
-        top3 = [_cyc_by_period.get(sc.periods[0], sc.cycles[0]) for sc in _filtered_singles]
-        top3_combos = list(_filtered_singles)
-    else:
-        # cycles simples à réussite >= 80%, classés par RENDEMENT décroissant (top 3)
-        _hi = [(c, get_custom_combination(prices, [c])) for c in cycles if c.hit_rate >= 80.0]
-        _hi.sort(key=lambda x: x[1].total_return_pct, reverse=True)
-        top3 = [c for c, _ in _hi[:3]]
-        top3_combos = [sc for _, sc in _hi[:3]]
+    top3 = [_cyc_by_period.get(sc.periods[0], sc.cycles[0]) for sc in _single_combos]
+    top3_combos = list(_single_combos)
     imgs_top3 = [fig_to_base64(plot_single_cycle(prices, dates, c, ticker)) for c in top3]
 
     # ── Summary data: jusqu'à 5 combos variées (cycles simples non répétés) ──
@@ -403,7 +399,7 @@ def generate_report(
         </div>"""
 
     # Section cycles simples : titre selon le mode (filtre vs réussite >= 80%)
-    _singles_title = ("Cycles simples (qui passent le filtre)" if _filtered_singles
+    _singles_title = ("Cycles simples (qui passent le filtre)" if _filtered
                       else "Cycles simples (réussite ≥ 80%)")
     singles_html = (f'<h2>{_singles_title}</h2>{top3_html}'
                     if top3_html.strip() else "")
@@ -415,9 +411,8 @@ def generate_report(
             html_out += (_combo_card_short_html if short_mode else _combo_card_html)(combo, img, rank)
         return html_out
 
-    # En mode filtre (--rendement / --reussite / --zone), on affiche TOUTES les
-    # combinaisons qui passent, pas seulement un top 3 → les titres s'adaptent.
-    _filtered = any(tag in options_note for tag in ("--rendement", "--reussite", "--zone", "--court"))
+    # En mode filtre (--rendement / --reussite / --zone / --court), on affiche TOUTES
+    # les combinaisons qui passent, pas seulement un top 3 → les titres s'adaptent.
     _p2 = "Combinaisons de 2 cycles (toutes celles qui passent le filtre)" if _filtered else "Top 3 — Combinaisons de 2 cycles"
     _p3 = "Combinaisons de 3 cycles (toutes celles qui passent le filtre)" if _filtered else "Top 3 — Combinaisons de 3 cycles"
     _pc = "Combinaisons de cycles courts (&lt; 200 jours) — toutes celles qui passent" if _filtered else "Top 3 — Combinaisons de cycles courts (&lt; 200 jours)"
