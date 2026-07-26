@@ -367,6 +367,10 @@ def generate_report(
         bull_c = f"↑ {sc.compound_return_pct:+.1f}% haussier"
         bear_s = f"↓ {short_total:+.1f}% short"
         bear_c = f"↓ {sc.short_compound_return_pct:+.1f}% short"
+        n_long = sc.n_zones
+        n_short = len(sc.bearish_zones)
+        avg_long = sc.avg_return_pct
+        avg_short = (sum(-z.return_pct for z in sc.bearish_zones) / n_short) if n_short else 0.0
         top3_html += f"""
         <div class="card">
           <div class="card-header">
@@ -380,6 +384,8 @@ def generate_report(
             <span class="stat-chip {short_col} ret-val" data-simple="{bear_s}" data-compound="{bear_c}">{bear_s}</span>
             <span class="stat-chip">{sc.hit_rate:.0f}% réussite long</span>
             <span class="stat-chip">{sc.bearish_hit_rate:.0f}% réussite short</span>
+            <span class="stat-chip">Zones : {n_long} L / {n_short} S</span>
+            <span class="stat-chip green">Rdt/zone : {avg_long:+.1f}% L / {avg_short:+.1f}% S</span>
           </div>
           <img src="data:image/png;base64,{img}" class="chart-img" loading="lazy">
         </div>"""
@@ -410,16 +416,19 @@ def generate_report(
     # Short section : les 3 MEILLEURES combinaisons pour le short (calculées plus haut)
     combos_html += _section_html(short_top, "Top 3 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
 
-    # Tableau récapitulatif du HAUT : combinaisons long proposées (2 + 3 + courts).
+    # Tableau récapitulatif du HAUT : combinaisons long proposées, cycles UNIQUES
+    # inclus (ceux qui passent le filtre) + paires + triples + courts.
     recap_html = _recap_table_html(
-        combinations.get(2, []) + combinations.get(3, []) + combinations.get("court", [])
+        combinations.get(1, []) + combinations.get(2, [])
+        + combinations.get(3, []) + combinations.get("court", [])
     )
 
     # Tableau FINAL (bas de page) : TOUTES les combinaisons proposées, tous types
-    # confondus — double, triple, cycles courts ET short.
+    # confondus — cycle unique, double, triple, cycles courts ET short.
     all_proposed = (
-        combinations.get(2, []) + combinations.get(3, [])
+        combinations.get(1, []) + combinations.get(2, []) + combinations.get(3, [])
         + combinations.get("court", [])
+        + combinations.get("short_1", [])
         + combinations.get("short_2", []) + combinations.get("short_3", [])
     )
     recap_full_html = _recap_table_html(all_proposed, title="Toutes les combinaisons proposées")
