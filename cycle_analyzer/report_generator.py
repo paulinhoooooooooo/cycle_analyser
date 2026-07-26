@@ -11,6 +11,7 @@ from .combination_analyzer import (
     CombinationResult,
     get_custom_combination,
     combo_quality,
+    _combos_too_similar,
 )
 from .visualizer import (
     fig_to_base64,
@@ -135,14 +136,28 @@ def _recap_table_html(combos: List[CombinationResult],
     cycles utilisés, rendement long & short, % de réussite long & short."""
     if not combos:
         return ""
-    # Une seule fois chaque combinaison, triée par qualité (rendement × réussite)
-    seen: set = set()
+    # Déduplication des QUASI-DOUBLONS (cycles à ~18% près, ex: 201+136 / 199+136).
+    # Une combinaison n'est masquée que si un quasi-jumeau déjà gardé la DOMINE à la
+    # fois sur le long (rendement, réussite, zones) ET sur le short — sinon elle
+    # apporte quelque chose (championne dans au moins une direction) et est gardée.
     uniq: List[CombinationResult] = []
     for c in sorted(combos, key=lambda r: combo_quality(r), reverse=True):
-        key = tuple(sorted(c.periods))
-        if key not in seen:
-            seen.add(key)
-            uniq.append(c)
+        sims = [k for k in uniq if _combos_too_similar(c.periods, k.periods)]
+        if sims:
+            dom_long = (
+                any(k.total_return_pct >= c.total_return_pct for k in sims)
+                and any(k.hit_rate >= c.hit_rate for k in sims)
+                and any(k.n_zones >= c.n_zones for k in sims)
+            )
+            c_sret = -c.bearish_total_return_pct
+            dom_short = (
+                any(-k.bearish_total_return_pct >= c_sret for k in sims)
+                and any(k.bearish_hit_rate >= c.bearish_hit_rate for k in sims)
+                and any(len(k.bearish_zones) >= len(c.bearish_zones) for k in sims)
+            )
+            if dom_long and dom_short:
+                continue
+        uniq.append(c)
     rows = ""
     for c in uniq:
         long_ret = c.total_return_pct
