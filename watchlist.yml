@@ -71,6 +71,18 @@ alerts:
     interval: 1d
     direction: long
 
+  - ticker: AMGN           # 🥇 #1 — ta combinaison la plus puissante en long
+    cycles: "201"
+    start: 01/01/2012
+    interval: 1d
+    direction: long
+    
+  - ticker: AMGN            # 🥈 #2 — combinaison secondaire en long
+    cycles: "93,187"
+    start: 01/01/2012
+    interval: 1d
+    direction: long
+    --------------------------------------------------------------
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
     start: 10/04/2020
