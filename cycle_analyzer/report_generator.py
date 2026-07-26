@@ -403,7 +403,7 @@ def generate_report(
 
     # En mode filtre (--rendement / --reussite / --zone), on affiche TOUTES les
     # combinaisons qui passent, pas seulement un top 3 → les titres s'adaptent.
-    _filtered = any(tag in options_note for tag in ("--rendement", "--reussite", "--zone"))
+    _filtered = any(tag in options_note for tag in ("--rendement", "--reussite", "--zone", "--court"))
     _p2 = "Combinaisons de 2 cycles (toutes celles qui passent le filtre)" if _filtered else "Top 3 — Combinaisons de 2 cycles"
     _p3 = "Combinaisons de 3 cycles (toutes celles qui passent le filtre)" if _filtered else "Top 3 — Combinaisons de 3 cycles"
     _pc = "Combinaisons de cycles courts (&lt; 200 jours) — toutes celles qui passent" if _filtered else "Top 3 — Combinaisons de cycles courts (&lt; 200 jours)"

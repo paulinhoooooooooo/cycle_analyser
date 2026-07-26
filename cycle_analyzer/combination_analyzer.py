@@ -544,6 +544,7 @@ def analyze_combinations(
     min_hit: float = None,
     min_zones: int = None,
     min_return: float = None,
+    max_period: int = None,
 ) -> Dict:
     """
     Returns combinations grouped by size, with separate long and short rankings:
@@ -576,6 +577,11 @@ def analyze_combinations(
         if c.period not in seen_periods:
             pool.append(c)
             seen_periods.add(c.period)
+
+    # Filtre --court : ne garder que les cycles < max_period barres. Toutes les
+    # combinaisons construites ensuite n'auront donc QUE des cycles courts.
+    if max_period is not None:
+        pool = [c for c in pool if c.period < max_period]
 
     results: Dict = {2: [], 3: [], "short_2": [], "short_3": [], "court": []}
 
@@ -649,7 +655,8 @@ def analyze_combinations(
     # quasi-doublons, ni logique de « reprise »). Un filtre ne doit jamais cacher
     # une combinaison qui remplit pourtant les conditions. Seuls les doublons
     # EXACTS (mêmes cycles) sont retirés.
-    filtered_mode = (min_return is not None) or (min_hit is not None) or (min_zones is not None)
+    filtered_mode = (min_return is not None) or (min_hit is not None) \
+        or (min_zones is not None) or (max_period is not None)
     if filtered_mode:
         # AUCUN plafond : toutes les combinaisons qui passent sont retournées.
         # (Les tableaux du rapport sont du texte → pas de problème de taille ;

@@ -240,6 +240,10 @@ Exemples :
                         help="Rendement MINIMUM (%%) par combinaison (ex: --rendement 200). "
                              "N'affiche que les combinaisons dont le rendement total est >= MIN%%. "
                              "Long: rendement haussier, Short: gain du short.")
+    parser.add_argument("--court", nargs="?", type=int, const=200, default=None, metavar="JOURS",
+                        help="Ne garder que les combinaisons dont TOUS les cycles font moins de "
+                             "JOURS barres (défaut 200 si aucune valeur). "
+                             "Ex: --court (= <200j) ou --court 300 (= <300j).")
     parser.add_argument("--interval", default="1d",
                         help="Intervalle de bougie (1d 1wk 1mo) [défaut: 1d]")
     parser.add_argument("--cycles", type=int, default=20,
@@ -562,7 +566,8 @@ Exemples :
         _min_hit = args.reussite if args.reussite is not None else None
         combinations = analyze_combinations(prices, cycles, top_n_per_size=3,
                                             recency_halflife=_recency, min_hit=_min_hit,
-                                            min_zones=args.zone, min_return=args.rendement)
+                                            min_zones=args.zone, min_return=args.rendement,
+                                            max_period=args.court)
         n_found = sum(len(v) for v in combinations.values())
         progress.update(t3, description=f"[green]✓[/green] {n_found} meilleures combinaisons trouvées")
         progress.stop_task(t3)
@@ -577,6 +582,8 @@ Exemples :
             _opts.append(f"≥ {args.zone} zones (--zone)")
         if args.rendement is not None:
             _opts.append(f"Rendement ≥ {args.rendement:.0f}% (--rendement)")
+        if args.court is not None:
+            _opts.append(f"Cycles < {args.court} jours (--court)")
         html = generate_report(
             ticker=ticker,
             ticker_info=ticker_info,
