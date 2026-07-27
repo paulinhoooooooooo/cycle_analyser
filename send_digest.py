@@ -261,8 +261,8 @@ def get_bull_status(ticker, periods, period, interval, start=None):
 
 def build_digest(config: dict) -> str:
     """Récap trié par cycle HAUSSIER :
-      1) d'abord les tickers EN cycle haussier, avec les barres restantes (le plus
-         de barres restantes d'abord = début le plus récent) ;
+      1) d'abord les tickers EN cycle haussier, du plus PROCHE DE LA FIN au plus
+         loin (le moins de barres restantes d'abord) ;
       2) puis ceux les plus PROCHES d'un début de cycle haussier (le plus proche
          d'abord) ;
       3) enfin les données indisponibles."""
@@ -302,7 +302,7 @@ def build_digest(config: dict) -> str:
             date_str = est.strftime("%d/%m/%Y") if est else "?"
             b = bars if bars is not None else BIG
             if bull_now:
-                key = (0, -b, i)   # EN hausse : le plus de barres restantes d'abord
+                key = (0, b, i)    # EN hausse : le plus PROCHE DE LA FIN d'abord (moins de barres restantes)
                 line = (f"🟢 <b>EN cycle HAUSSIER</b> — encore <b>{bars} barres</b> (fin ~{date_str})"
                         if bars is not None
                         else "🟢 <b>EN cycle HAUSSIER</b> (fin au-delà de l'horizon)")
