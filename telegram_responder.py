@@ -53,13 +53,38 @@ def get_updates(offset: int = None) -> list:
     return data.get("result", [])
 
 
+_TG_LIMIT = 3800   # marge sous la limite Telegram (4096 caractères / message)
+
+
+def _chunks(text: str, limit: int = _TG_LIMIT) -> list:
+    """Découpe un texte long en morceaux <= limit, sur les sauts de ligne."""
+    parts, cur = [], ""
+    for line in text.split("\n"):
+        while len(line) > limit:                 # ligne unique trop longue → coupe brute
+            if cur:
+                parts.append(cur); cur = ""
+            parts.append(line[:limit]); line = line[limit:]
+        if len(cur) + len(line) + 1 > limit:
+            if cur:
+                parts.append(cur)
+            cur = line
+        else:
+            cur = (cur + "\n" + line) if cur else line
+    if cur:
+        parts.append(cur)
+    return parts
+
+
 def send(chat_id, text: str) -> None:
-    try:
-        requests.post(f"{API}/sendMessage", json={
-            "chat_id": chat_id, "text": text, "parse_mode": "HTML",
-        }, timeout=20)
-    except Exception as exc:
-        print(f"[sendMessage] erreur : {exc}")
+    for part in _chunks(text):
+        try:
+            r = requests.post(f"{API}/sendMessage", json={
+                "chat_id": chat_id, "text": part, "parse_mode": "HTML",
+            }, timeout=20)
+            if not r.ok:
+                print(f"[sendMessage] {r.status_code} : {r.text[:200]}")
+        except Exception as exc:
+            print(f"[sendMessage] erreur : {exc}")
 
 
 def main() -> None:
@@ -86,27 +111,32 @@ def main() -> None:
             if chat_id not in asked:
                 asked.append(chat_id)
 
-    if asked:
-        # Accusé de réception immédiat (le calcul prend ~30-60 s)
-        for chat_id in asked:
-            send(chat_id, "⏳ Je calcule tes prochains événements cycliques…")
+    # Confirmer les updates IMMÉDIATEMENT (Telegram les oublie) : même si le calcul
+    # échoue ensuite, ces messages ne seront pas retraités → pas de « ⏳ » en boucle.
+    get_updates(offset=max_id + 1)
 
+    if not asked:
+        print(f"{len(updates)} update(s), aucun /prochains.")
+        return
+
+    # Accusé de réception immédiat (le calcul prend ~30-60 s)
+    for chat_id in asked:
+        send(chat_id, "⏳ Je calcule tes prochains événements cycliques…")
+
+    try:
         config_path = Path("watchlist.yml")
-        if config_path.exists():
+        if not config_path.exists():
+            digest = "❌ watchlist.yml introuvable sur le serveur."
+        else:
             config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
             digest = build_digest(config)
-        else:
-            digest = "❌ watchlist.yml introuvable sur le serveur."
+    except Exception as exc:
+        digest = f"❌ Erreur lors du calcul du récap : {exc}"
+        print(f"[build_digest] {exc}")
 
-        for chat_id in asked:
-            send(chat_id, digest)
-            print(f"✓ Répondu à /prochains pour le chat {chat_id}")
-    else:
-        print(f"{len(updates)} update(s), aucun /prochains.")
-
-    # Confirmer les updates traités → Telegram les oublie, le prochain réveil
-    # ne verra que les messages suivants.
-    get_updates(offset=max_id + 1)
+    for chat_id in asked:
+        send(chat_id, digest)
+        print(f"✓ Répondu à /prochains pour le chat {chat_id}")
 
 
 if __name__ == "__main__":

@@ -37,18 +37,42 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 MAX_LOOKAHEAD    = 300   # barres max explorées (~1 an de trading)
 
 
+_TG_LIMIT = 3800   # marge sous la limite Telegram (4096 caractères / message)
+
+
+def _chunks(text: str, limit: int = _TG_LIMIT) -> list:
+    """Découpe un texte long en morceaux <= limit, sur les sauts de ligne."""
+    parts, cur = [], ""
+    for line in text.split("\n"):
+        while len(line) > limit:
+            if cur:
+                parts.append(cur); cur = ""
+            parts.append(line[:limit]); line = line[limit:]
+        if len(cur) + len(line) + 1 > limit:
+            if cur:
+                parts.append(cur)
+            cur = line
+        else:
+            cur = (cur + "\n" + line) if cur else line
+    if cur:
+        parts.append(cur)
+    return parts
+
+
 def send_telegram(message: str) -> None:
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         print(f"[DRY RUN — pas de secrets Telegram]\n{message}\n")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    resp = requests.post(url, json={
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML",
-    }, timeout=15)
-    if not resp.ok:
-        print(f"Erreur Telegram : {resp.status_code} {resp.text}")
+    # Découpe si > limite Telegram, sinon le message long est rejeté (erreur 400).
+    for part in _chunks(message):
+        resp = requests.post(url, json={
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": part,
+            "parse_mode": "HTML",
+        }, timeout=15)
+        if not resp.ok:
+            print(f"Erreur Telegram : {resp.status_code} {resp.text}")
 
 
 # ── Événements cycliques (mêmes calculs que le bot /prochains) ─────────────────
@@ -138,34 +162,38 @@ def get_next_events(
     direction: str = "both",
     max_events: int = 2,
 ) -> List[CycleEvent]:
-    """Les `max_events` prochains événements cycliques pour ce ticker."""
+    """Les `max_events` prochains événements cycliques pour ce ticker.
+    TOUT est protégé : un ticker fautif (données vides, calcul qui échoue…)
+    renvoie [] au lieu de casser le récap complet."""
     try:
         data = fetch_data(ticker, period=period, interval=interval, start=start)
+        prices    = get_close_prices(data)
+        dates_idx = get_dates(data)
+        if prices is None or len(prices) < 30:
+            print(f"  ⚠ {ticker} : pas assez de données ({0 if prices is None else len(prices)} barres)")
+            return []
+        cycles = _build_cycles(prices, periods)
+        t_last = float(len(prices) - 1)
+        periods_str = " + ".join(str(p) for p in periods)
+        events: List[CycleEvent] = []
+
+        for k in range(1, MAX_LOOKAHEAD + 1):
+            bull_before, bear_before = _state_at(cycles, t_last + k - 1)
+            bull_after,  bear_after  = _state_at(cycles, t_last + k)
+            # L'événement (pic/creux) est à la barre k-1, comme sur le graphe.
+            bar = max(1, k - 1)
+            est = _est_future_date(dates_idx, bar)
+            for et in _transitions_at(bull_before, bull_after, bear_before, bear_after):
+                if _event_in_direction(et, direction):
+                    events.append(CycleEvent(ticker, periods_str, et, bar, est))
+            if len(events) >= max_events:
+                break
+
+        events.sort(key=lambda e: e.bars_away)
+        return events[:max_events]
     except Exception as exc:
-        print(f"  ⚠ Erreur fetch {ticker} : {exc}")
+        print(f"  ⚠ Erreur {ticker} : {exc}")
         return []
-
-    prices    = get_close_prices(data)
-    dates_idx = get_dates(data)
-    cycles = _build_cycles(prices, periods)
-    t_last = float(len(prices) - 1)
-    periods_str = " + ".join(str(p) for p in periods)
-    events: List[CycleEvent] = []
-
-    for k in range(1, MAX_LOOKAHEAD + 1):
-        bull_before, bear_before = _state_at(cycles, t_last + k - 1)
-        bull_after,  bear_after  = _state_at(cycles, t_last + k)
-        # L'événement (pic/creux) est à la barre k-1, comme les annotations du graphe.
-        bar = max(1, k - 1)
-        est = _est_future_date(dates_idx, bar)
-        for et in _transitions_at(bull_before, bull_after, bear_before, bear_after):
-            if _event_in_direction(et, direction):
-                events.append(CycleEvent(ticker, periods_str, et, bar, est))
-        if len(events) >= max_events:
-            break
-
-    events.sort(key=lambda e: e.bars_away)
-    return events[:max_events]
 
 
 # ── Mise en forme du message ──────────────────────────────────────────────────
