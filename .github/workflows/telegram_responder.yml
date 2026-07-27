@@ -16,7 +16,7 @@ concurrency:
 jobs:
   respond:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,8 +27,9 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Installer les dépendances
-        run: pip install -r requirements.txt
+      - name: Installer les dépendances (minimum pour /prochains)
+        # Pas besoin de matplotlib/rich/telegram ici → install plus rapide.
+        run: pip install requests pyyaml numpy pandas yfinance scipy
 
       - name: Répondre à /prochains
         env:

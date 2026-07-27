@@ -230,20 +230,56 @@ def _event_line(e: CycleEvent) -> str:
     )
 
 
+def get_bull_status(ticker, periods, period, interval, start=None):
+    """État du cycle HAUSSIER (tous les cycles alignés à la hausse) pour ce ticker.
+    Renvoie (bull_now: bool, bars: int|None, est_date|None) :
+      - bull_now True  → EN cycle haussier ; bars = barres restantes avant la fin.
+      - bull_now False → pas encore ; bars = barres avant le prochain début haussier.
+      - bars None      → aucune transition dans l'horizon.
+    Renvoie None si le calcul échoue (données indispo, etc.)."""
+    try:
+        data = fetch_data(ticker, period=period, interval=interval, start=start)
+        prices = get_close_prices(data)
+        dates_idx = get_dates(data)
+        if prices is None or len(prices) < 30:
+            print(f"  ⚠ {ticker} : pas assez de données")
+            return None
+        cycles = _build_cycles(prices, periods)
+        t_last = float(len(prices) - 1)
+        bull_now = _state_at(cycles, t_last)[0]      # tous les cycles montent-ils ?
+        bars = None
+        for k in range(1, MAX_LOOKAHEAD + 1):
+            if _state_at(cycles, t_last + k)[0] != bull_now:
+                bars = max(1, k - 1)                 # barre du pic/creux (comme le graphe)
+                break
+        est = _est_future_date(dates_idx, bars) if bars else None
+        return (bull_now, bars, est)
+    except Exception as exc:
+        print(f"  ⚠ Erreur {ticker} : {exc}")
+        return None
+
+
 def build_digest(config: dict) -> str:
+    """Récap trié par cycle HAUSSIER :
+      1) d'abord les tickers EN cycle haussier, avec les barres restantes (le plus
+         de barres restantes d'abord = début le plus récent) ;
+      2) puis ceux les plus PROCHES d'un début de cycle haussier (le plus proche
+         d'abord) ;
+      3) enfin les données indisponibles."""
     alerts_list = config.get("alerts", [])
     if not alerts_list:
         return "Aucun ticker dans watchlist.yml."
 
-    # Rang par ticker : l'ordre dans le fichier fait le classement.
+    # Rang par ticker (l'ordre dans le fichier fait le classement).
     counts: dict = {}
     for entry in alerts_list:
         tk = entry["ticker"].upper()
         counts[tk] = counts.get(tk, 0) + 1
     seen: dict = {}
 
-    lines = ["<b>📊 Prochains événements cycliques</b>\n"]
-    for entry in alerts_list:
+    BIG = MAX_LOOKAHEAD + 1
+    rows = []   # (clé_de_tri, en-tête, ligne d'état)
+    for i, entry in enumerate(alerts_list):
         ticker   = entry["ticker"].upper()
         periods  = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
         period   = entry.get("period", "5y")
@@ -255,22 +291,36 @@ def build_digest(config: dict) -> str:
         rank, total = seen[ticker], counts[ticker]
         dir_tag = {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
         periods_str = " + ".join(str(p) for p in periods)
-        lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)}{dir_tag} (cycles {periods_str}b)")
+        header = f"<b>{ticker}</b>{_rank_tag(rank, total)}{dir_tag} (cycles {periods_str}b)"
 
-        events = get_next_events(ticker, periods, period, interval,
-                                 start=start, direction=direction)
-        if not events:
-            what = {
-                "long":  "alignement HAUSSIER (filtre direction: long)",
-                "short": "alignement BAISSIER (filtre direction: short)",
-            }.get((direction or "both").lower(), "événement")
-            lines.append(f"  ⚠ Aucun {what} dans les {MAX_LOOKAHEAD} prochaines barres.")
+        st = get_bull_status(ticker, periods, period, interval, start)
+        if st is None:
+            key = (3, 0, i)
+            line = "⚠ Données indisponibles."
         else:
-            for e in events:
-                lines.append(f"  {_event_line(e)}")
-        lines.append("")
+            bull_now, bars, est = st
+            date_str = est.strftime("%d/%m/%Y") if est else "?"
+            b = bars if bars is not None else BIG
+            if bull_now:
+                key = (0, -b, i)   # EN hausse : le plus de barres restantes d'abord
+                line = (f"🟢 <b>EN cycle HAUSSIER</b> — encore <b>{bars} barres</b> (fin ~{date_str})"
+                        if bars is not None
+                        else "🟢 <b>EN cycle HAUSSIER</b> (fin au-delà de l'horizon)")
+            else:
+                key = (1, b, i)    # pré-hausse : le plus proche du début d'abord
+                line = (f"🔜 Début HAUSSIER dans <b>{bars} barres</b> (~{date_str})"
+                        if bars is not None
+                        else f"⚪ Pas de début haussier dans les {MAX_LOOKAHEAD} prochaines barres")
+        rows.append((key, header, line))
 
-    return "\n".join(lines).strip()
+    rows.sort(key=lambda r: r[0])
+
+    out = ["<b>📊 Cycles haussiers — en cours d'abord, puis les plus proches</b>\n"]
+    for _, header, line in rows:
+        out.append(header)
+        out.append(f"  {line}")
+        out.append("")
+    return "\n".join(out).strip()
 
 
 def main() -> None:
