@@ -92,37 +92,47 @@ def main() -> None:
         print("❌ TELEGRAM_TOKEN non défini — arrêt.")
         sys.exit(1)
 
+    # Déclenchement MANUEL (bouton « Run workflow ») vs réveil programmé.
+    manual = os.environ.get("GITHUB_EVENT_NAME", "") == "workflow_dispatch"
+    chat_env = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+
+    # 1) Lire les nouveaux messages et repérer les /prochains
     updates = get_updates()
-    if not updates:
-        print("Aucun nouveau message.")
-        return
-
-    max_id = max(u["update_id"] for u in updates)
-
-    # Chats ayant demandé /prochains à ce réveil (déduplique si envoyé plusieurs fois)
     asked = []
-    for u in updates:
-        msg = u.get("message") or u.get("edited_message")
-        if not msg:
-            continue
-        text = (msg.get("text") or "").strip().lower()
-        chat_id = msg.get("chat", {}).get("id")
-        if chat_id is not None and any(text.startswith(t) for t in _TRIGGERS):
-            if chat_id not in asked:
-                asked.append(chat_id)
+    if updates:
+        max_id = max(u["update_id"] for u in updates)
+        for u in updates:
+            msg = u.get("message") or u.get("edited_message")
+            if not msg:
+                continue
+            text = (msg.get("text") or "").strip().lower()
+            chat_id = msg.get("chat", {}).get("id")
+            if chat_id is not None and any(text.startswith(t) for t in _TRIGGERS):
+                if chat_id not in asked:
+                    asked.append(chat_id)
+        # Confirmer immédiatement (Telegram oublie ces updates) → pas de « ⏳ » en boucle.
+        get_updates(offset=max_id + 1)
 
-    # Confirmer les updates IMMÉDIATEMENT (Telegram les oublie) : même si le calcul
-    # échoue ensuite, ces messages ne seront pas retraités → pas de « ⏳ » en boucle.
-    get_updates(offset=max_id + 1)
+    # 2) Cibles à qui envoyer le récap = chats ayant tapé /prochains + (si clic manuel)
+    #    le chat enregistré → ainsi « Run workflow » envoie TOUJOURS le récap.
+    targets = list(asked)
+    if manual and chat_env:
+        try:
+            cid = int(chat_env)
+        except ValueError:
+            cid = chat_env
+        if cid not in targets:
+            targets.append(cid)
 
-    if not asked:
-        print(f"{len(updates)} update(s), aucun /prochains.")
+    if not targets:
+        print(f"{len(updates)} update(s) — aucun /prochains, pas de clic manuel. Rien à faire.")
         return
 
-    # Accusé de réception immédiat (le calcul prend ~30-60 s)
-    for chat_id in asked:
-        send(chat_id, "⏳ Je calcule tes prochains événements cycliques…")
+    # 3) Accusé de réception immédiat (le calcul prend ~30-60 s)
+    for cid in targets:
+        send(cid, "⏳ Je calcule tes prochains événements cycliques…")
 
+    # 4) Calcul du récap (une seule fois)
     try:
         config_path = Path("watchlist.yml")
         if not config_path.exists():
@@ -134,9 +144,9 @@ def main() -> None:
         digest = f"❌ Erreur lors du calcul du récap : {exc}"
         print(f"[build_digest] {exc}")
 
-    for chat_id in asked:
-        send(chat_id, digest)
-        print(f"✓ Répondu à /prochains pour le chat {chat_id}")
+    for cid in targets:
+        send(cid, digest)
+        print(f"✓ Récap envoyé au chat {cid}")
 
 
 if __name__ == "__main__":
