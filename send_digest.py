@@ -257,13 +257,26 @@ def get_bull_status(ticker, periods, period, interval, start=None):
         t_last = float(N - 1)
         bull_now = _state_at(cycles, t_last)[0]      # tous les cycles montent-ils ?
 
-        # Prochaine transition (fin de hausse si en hausse ; début sinon)
-        bars = None
+        # Transitions à venir de l'état haussier (jusqu'à 2) : pour un cycle pas
+        # encore commencé, on veut son DÉBUT (1re transition) ET sa FIN (2e).
+        trans = []
+        prev = bull_now
         for k in range(1, MAX_LOOKAHEAD + 1):
-            if _state_at(cycles, t_last + k)[0] != bull_now:
-                bars = max(1, k - 1)                 # barre du pic/creux (comme le graphe)
-                break
+            s = _state_at(cycles, t_last + k)[0]
+            if s != prev:
+                trans.append(max(1, k - 1))          # barre du pic/creux (comme le graphe)
+                prev = s
+                if len(trans) >= 2:
+                    break
+
+        bars = trans[0] if trans else None           # 1re transition (fin si en hausse ; début sinon)
         est = _est_future_date(dates_idx, bars) if bars else None
+
+        # Pré-hausse : barres jusqu'à la FIN du prochain cycle haussier (2e transition)
+        end_bars = end_est = None
+        if not bull_now and len(trans) >= 2:
+            end_bars = trans[1]
+            end_est = _est_future_date(dates_idx, end_bars)
 
         # Si EN hausse : remonter pour trouver le DÉBUT du cycle haussier en cours
         start_date = ret = None
@@ -277,7 +290,8 @@ def get_bull_status(ticker, periods, period, interval, start=None):
             ret = ((p1 - p0) / p0 * 100.0) if p0 else 0.0
 
         return {"bull_now": bull_now, "bars": bars, "est": est,
-                "start": start_date, "ret": ret}
+                "start": start_date, "ret": ret,
+                "end_bars": end_bars, "end_est": end_est}
     except Exception as exc:
         print(f"  ⚠ Erreur {ticker} : {exc}")
         return None
@@ -337,9 +351,14 @@ def build_digest(config: dict) -> str:
                     line += f"\n  ▸ Début le {start_str} · <b>{ret:+.1f}%</b> depuis le début"
             else:
                 key = (1, b, i)    # pré-hausse : le plus proche du début d'abord
-                line = (f"🔜 Début HAUSSIER dans <b>{bars} barres</b> (~{date_str})"
-                        if bars is not None
-                        else f"⚪ Pas de début haussier dans les {MAX_LOOKAHEAD} prochaines barres")
+                if bars is not None:
+                    line = f"🔜 Début HAUSSIER dans <b>{bars} barres</b> (~{date_str})"
+                    # Sous-ligne : quand ce cycle haussier se terminera
+                    if st["end_bars"] is not None:
+                        end_str = st["end_est"].strftime("%d/%m/%Y") if st["end_est"] else "?"
+                        line += f"\n  ▸ Fin du cycle dans <b>{st['end_bars']} barres</b> (~{end_str})"
+                else:
+                    line = f"⚪ Pas de début haussier dans les {MAX_LOOKAHEAD} prochaines barres"
         rows.append((key, header, line))
 
     rows.sort(key=lambda r: r[0])
