@@ -8,6 +8,7 @@ on:
 jobs:
   send-digest:
     runs-on: ubuntu-latest
+    timeout-minutes: 6      # sécurité : ne jamais rester bloqué (orange) indéfiniment
 
     steps:
       - name: Checkout
@@ -19,8 +20,8 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Installer les dépendances
-        run: pip install -r requirements.txt
+      - name: Installer les dépendances (minimum pour le récap)
+        run: pip install requests pyyaml numpy pandas yfinance scipy
 
       - name: Envoyer le récap des prochains événements
         env:
