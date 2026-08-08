@@ -165,14 +165,16 @@ def _backtest_note(entry: dict) -> str:
     bits = []
     if rdt is not None:
         try:
-            bits.append(f"Rdt {float(rdt):+.0f}%")
+            v = float(str(rdt).replace(",", "."))   # tolère la virgule française
+            bits.append(f"Rdt {v:+g}%".replace(".", ","))
         except (TypeError, ValueError):
             bits.append(f"Rdt {rdt}")
     if zones is not None:
         bits.append(f"{zones} zones")
     if reuss is not None:
         try:
-            bits.append(f"réussite {float(reuss):.0f}%")
+            v = float(str(reuss).replace(",", "."))
+            bits.append(f"réussite {v:g}%".replace(".", ","))
         except (TypeError, ValueError):
             bits.append(f"réussite {reuss}")
     return ("📊 Backtest : " + " · ".join(bits)) if bits else ""

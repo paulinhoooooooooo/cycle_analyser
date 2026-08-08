@@ -68,7 +68,9 @@ alerts:
     start: 01/01/2012
     interval: 1d
     direction: long
-    📊 Rdt 373,6% · 31 zones · réussite 87%
+    rdt: 373.6
+    zones: 31
+    reussite: 87
 
   - ticker: UI
     cycles: "147"
@@ -107,12 +109,14 @@ alerts:
     interval: 1d
     direction: long
 
-  - ticker: IYT         
+  - ticker: IYT
     cycles: "175"
     start: 01/01/2010
     interval: 1d
     direction: long
-    📊 Rdt 222,4% · 24 zones · réussite 92%
+    rdt: 222.4
+    zones: 24
+    reussite: 92
 
   # ----------------------- CRYPTO ---------------------
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
