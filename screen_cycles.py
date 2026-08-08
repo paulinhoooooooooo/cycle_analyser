@@ -39,6 +39,9 @@ SEUIL_TRES       = 150.0  # rdt d'une combo fiable ≥ 150 % → ⭐⭐
 SEUIL_INTER      = 80.0   # rdt d'une combo fiable ≥ 80 %  → ⭐
 
 
+MAX_PAR_TICKER = 4        # nombre max de combos affichées par entreprise
+
+
 def _best_combos(prices):
     """Retourne la liste des combos LONG (tailles 1,2,3) avec (periods, rdt, zones, hit)."""
     cycles = detect_cycles(prices, min_period=15, max_period=min(300, len(prices) // 3))
@@ -55,32 +58,57 @@ def _best_combos(prices):
     return out
 
 
+def _too_similar(a_periods, b_periods, tol=0.06):
+    """Deux combos quasi identiques (mêmes cycles à ~6% près) → on n'en garde qu'une."""
+    if len(a_periods) != len(b_periods):
+        return False
+    for pa, pb in zip(sorted(a_periods), sorted(b_periods)):
+        if abs(pa - pb) > max(3, tol * max(pa, pb)):
+            return False
+    return True
+
+
+def _dedup(combos):
+    """Garde les combos distinctes (écarte les quasi-doublons), en gardant la 1re vue."""
+    kept = []
+    for c in combos:
+        if not any(_too_similar(c[0], k[0]) for k in kept):
+            kept.append(c)
+    return kept
+
+
 def screen_ticker(ticker, period):
-    """Retourne dict(verdict_rank, verdict, best=(periods,rdt,zones,hit)) ou None si data KO."""
+    """Retourne dict(rank, verdict, combos=[combos intéressantes triées]) ou data KO."""
     data = fetch_data(ticker, period=period, interval="1d")
     prices = get_close_prices(data)
     if len(prices) < 200:
-        return dict(rank=4, verdict="✗ HISTORIQUE TROP COURT", best=None)
+        return dict(rank=4, verdict="✗ HISTORIQUE TROP COURT", combos=[])
 
     combos = _best_combos(prices)
     if not combos:
-        return dict(rank=4, verdict="✗ PEU CYCLIQUE", best=None)
+        return dict(rank=4, verdict="✗ PEU CYCLIQUE", combos=[])
 
     fiables = [c for c in combos if c[2] >= MIN_ZONES_FIABLE and c[3] >= MIN_HIT_FIABLE and c[1] > 0]
     if fiables:
-        best = max(fiables, key=lambda c: c[1])           # meilleure combo fiable par rdt
-        if best[1] >= SEUIL_TRES:
-            return dict(rank=0, verdict="⭐⭐ TRÈS INTÉRESSANT", best=best)
-        if best[1] >= SEUIL_INTER:
-            return dict(rank=1, verdict="⭐ INTÉRESSANT", best=best)
-        return dict(rank=2, verdict="➖ MOYEN", best=best)
+        keep = _dedup(sorted(fiables, key=lambda c: -c[1]))[:MAX_PAR_TICKER]
+        best_rdt = keep[0][1]
+        n = len(keep)
+        if best_rdt >= SEUIL_TRES:
+            v = "⭐⭐ TRÈS INTÉRESSANT"; rank = 0
+        elif best_rdt >= SEUIL_INTER:
+            v = "⭐ INTÉRESSANT"; rank = 1
+        else:
+            v = "➖ MOYEN"; rank = 2
+        if n > 1:
+            v += f" ({n} cycles)"
+        return dict(rank=rank, verdict=v, combos=keep)
 
-    # Pas de combo fiable → on montre quand même la meilleure « brute » comme repère
+    # Pas de combo fiable → on montre les meilleures « brutes » comme repère
     moyen = [c for c in combos if c[2] >= 6 and c[1] > 0]
     if moyen:
-        best = max(moyen, key=lambda c: c[1])
-        return dict(rank=3, verdict="➖ MOYEN (peu de répétitions)", best=best)
-    return dict(rank=4, verdict="✗ PEU CYCLIQUE", best=None)
+        keep = _dedup(sorted(moyen, key=lambda c: -c[1]))[:MAX_PAR_TICKER]
+        return dict(rank=3, verdict="➖ MOYEN (peu de répétitions)", combos=keep)
+    return dict(rank=4, verdict="✗ PEU CYCLIQUE", combos=[])
 
 
 def _parse_tickers(raw: str):
@@ -124,31 +152,29 @@ def main():
             r = screen_ticker(tk, period)
         except Exception as exc:
             print(f"  ⚠ {tk} -> erreur : {exc}")
-            rows.append((5, tk, "⚠ DONNÉES INDISPONIBLES", None))
+            rows.append((5, tk, "⚠ DONNÉES INDISPONIBLES", []))
             continue
-        rows.append((r["rank"], tk, r["verdict"], r["best"]))
-        b = r["best"]
-        detail = (f" | {'+'.join(map(str,b[0]))}b · Rdt {b[1]:+.0f}% · {b[2]} zones · {b[3]:.0f}%"
-                  if b else "")
-        print(f"  {r['verdict']:32} {tk}{detail}")
+        rows.append((r["rank"], tk, r["verdict"], r["combos"]))
+        print(f"  {r['verdict']:34} {tk}")
+        for b in r["combos"]:
+            print(f"       {'+'.join(map(str,b[0]))}b · Rdt {b[1]:+.0f}% · {b[2]} zones · {b[3]:.0f}%")
 
-    # Classement : meilleur verdict d'abord, puis meilleur rdt fiable
-    rows.sort(key=lambda x: (x[0], -(x[3][1] if x[3] else -1e9)))
+    # Classement : meilleur verdict d'abord, puis meilleur rdt de la 1re combo
+    rows.sort(key=lambda x: (x[0], -(x[3][0][1] if x[3] else -1e9)))
 
     lines = [f"<b>🔎 Screener de cycles</b> — {len(tickers)} valeur(s) · fenêtre {period}\n"]
     cur_rank = None
-    for rank, tk, verdict, best in rows:
+    for rank, tk, verdict, combos in rows:
         if rank != cur_rank:
             cur_rank = rank
             lines.append("")  # séparation entre groupes
-        if best:
-            periods = "+".join(map(str, best[0]))
-            lines.append(f"{verdict} <b>{tk}</b>")
-            lines.append(f"   ▸ {periods}b · Rdt {best[1]:+.0f}% · {best[2]} zones · réussite {best[3]:.0f}%")
-        else:
-            lines.append(f"{verdict} <b>{tk}</b>")
-    lines.append("\n<i>« Fiable » = ≥10 zones et ≥75% réussite. Beaucoup de zones = "
-                 "cycle qui se répète vraiment (plus fiable qu'un gros rdt sur peu de zones).</i>")
+        lines.append(f"{verdict} <b>{tk}</b>")
+        for b in combos:
+            periods = "+".join(map(str, b[0]))
+            lines.append(f"   ▸ {periods}b · Rdt {b[1]:+.0f}% · {b[2]} zones · réussite {b[3]:.0f}%")
+    lines.append("\n<i>Plusieurs ▸ = plusieurs cycles intéressants pour la valeur. "
+                 "« Fiable » = ≥10 zones et ≥75% réussite (le cycle se répète vraiment, "
+                 "plus fiable qu'un gros rdt sur peu de zones).</i>")
     report = "\n".join(lines)
 
     print("\n" + "=" * 60)
