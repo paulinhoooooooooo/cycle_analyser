@@ -73,8 +73,11 @@ def check_ticker(
     start: str = None,
     rank_tag: str = "",
     direction: str = "both",
+    stats: str = "",
 ) -> List[str]:
-    """Retourne la liste des messages d'alerte pour ce ticker."""
+    """Retourne la liste des messages d'alerte pour ce ticker.
+    ``stats`` : ligne de backtest optionnelle (rendement/zones/réussite) ajoutée
+    en pied de chaque alerte — purement informative."""
     try:
         data = fetch_data(ticker, period=period, interval=interval, start=start)
     except Exception as exc:
@@ -147,7 +150,32 @@ def check_ticker(
                 f"📅 Données au {last_date}"
             )
 
+    if stats:
+        messages = [f"{m}\n{stats}" for m in messages]
     return messages
+
+
+def _backtest_note(entry: dict) -> str:
+    """Ligne d'info optionnelle (rendement / zones / réussite) saisie À LA MAIN
+    dans watchlist.yml. Purement informatif : n'influence AUCUN calcul de cycle.
+    Champs acceptés : rdt|rendement, zones, reussite|réussite|success."""
+    rdt = entry.get("rdt", entry.get("rendement"))
+    zones = entry.get("zones")
+    reuss = entry.get("reussite", entry.get("réussite", entry.get("success")))
+    bits = []
+    if rdt is not None:
+        try:
+            bits.append(f"Rdt {float(rdt):+.0f}%")
+        except (TypeError, ValueError):
+            bits.append(f"Rdt {rdt}")
+    if zones is not None:
+        bits.append(f"{zones} zones")
+    if reuss is not None:
+        try:
+            bits.append(f"réussite {float(reuss):.0f}%")
+        except (TypeError, ValueError):
+            bits.append(f"réussite {reuss}")
+    return ("📊 Backtest : " + " · ".join(bits)) if bits else ""
 
 
 def main() -> None:
@@ -188,9 +216,11 @@ def main() -> None:
             rank_tag = f" {rank_icons.get(seen[ticker], '▫️')} <b>#{seen[ticker]}</b>"
         rank_tag += {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
 
+        stats = _backtest_note(entry)
         print(f"  {ticker} ({' + '.join(str(p) for p in periods)}b)… ", end="", flush=True)
         messages = check_ticker(ticker, periods, period, interval, lookahead,
-                                start=start, rank_tag=rank_tag, direction=direction)
+                                start=start, rank_tag=rank_tag, direction=direction,
+                                stats=stats)
 
         if messages:
             for msg in messages:

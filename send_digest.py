@@ -297,6 +297,29 @@ def get_bull_status(ticker, periods, period, interval, start=None):
         return None
 
 
+def _backtest_note(entry: dict) -> str:
+    """Ligne d'info optionnelle (rendement / zones / réussite) saisie À LA MAIN
+    dans watchlist.yml. Purement informatif : n'influence AUCUN calcul de cycle.
+    Champs acceptés : rdt|rendement, zones, reussite|réussite|success."""
+    rdt = entry.get("rdt", entry.get("rendement"))
+    zones = entry.get("zones")
+    reuss = entry.get("reussite", entry.get("réussite", entry.get("success")))
+    bits = []
+    if rdt is not None:
+        try:
+            bits.append(f"Rdt {float(rdt):+.0f}%")
+        except (TypeError, ValueError):
+            bits.append(f"Rdt {rdt}")
+    if zones is not None:
+        bits.append(f"{zones} zones")
+    if reuss is not None:
+        try:
+            bits.append(f"réussite {float(reuss):.0f}%")
+        except (TypeError, ValueError):
+            bits.append(f"réussite {reuss}")
+    return ("📊 Backtest : " + " · ".join(bits)) if bits else ""
+
+
 def build_digest(config: dict) -> str:
     """Récap trié par cycle HAUSSIER :
       1) d'abord les tickers EN cycle haussier, du plus PROCHE DE LA FIN au plus
@@ -330,6 +353,9 @@ def build_digest(config: dict) -> str:
         dir_tag = {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
         periods_str = " + ".join(str(p) for p in periods)
         header = f"<b>{ticker}</b>{_rank_tag(rank, total)}{dir_tag} (cycles {periods_str}b)"
+        note = _backtest_note(entry)
+        if note:
+            header += f"\n  {note}"
 
         st = get_bull_status(ticker, periods, period, interval, start)
         if st is None:

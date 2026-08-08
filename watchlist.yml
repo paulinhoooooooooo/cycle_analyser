@@ -16,6 +16,10 @@
 #              long  = uniquement les alignements HAUSSIERS (↑),
 #              short = uniquement les alignements BAISSIERS (↓),
 #              both  = les deux (défaut si absent). (optionnel)
+#   rdt      : rendement % du backtest (ex: 540)   ┐ purement INFORMATIF,
+#   zones    : nombre de zones touchées (ex: 8)    │ affiché dans les notifs
+#   reussite : % de réussite (ex: 85)              ┘ Telegram. N'influence
+#              AUCUN calcul de cycle. (optionnels, saisis à la main)
 #
 # PLUSIEURS COMBINAISONS PAR TICKER : répéter le bloc avec le même ticker.
 # L'ORDRE DANS LE FICHIER fait le classement : la 1re entrée = 🥇 #1
