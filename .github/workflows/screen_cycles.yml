@@ -14,6 +14,16 @@ on:
         required: false
         default: "10y"
         type: string
+      min_zones:
+        description: "Zones minimum pour qu'un cycle soit jugé fiable"
+        required: false
+        default: "10"
+        type: string
+      min_hit:
+        description: "% de réussite minimum pour qu'un cycle soit jugé fiable"
+        required: false
+        default: "75"
+        type: string
       telegram:
         description: "Envoyer aussi le résultat sur Telegram ?"
         required: false
@@ -43,6 +53,8 @@ jobs:
         env:
           TICKERS: ${{ inputs.tickers }}
           SCREEN_PERIOD: ${{ inputs.period }}
+          MIN_ZONES: ${{ inputs.min_zones }}
+          MIN_HIT: ${{ inputs.min_hit }}
           # Telegram uniquement si demandé (par défaut « non » → résultat dans le log seulement)
           TELEGRAM_TOKEN: ${{ inputs.telegram == 'oui' && secrets.TELEGRAM_TOKEN || '' }}
           TELEGRAM_CHAT_ID: ${{ inputs.telegram == 'oui' && secrets.TELEGRAM_CHAT_ID || '' }}

@@ -32,9 +32,9 @@ from cycle_analyzer.data_fetcher import fetch_data, get_close_prices
 from cycle_analyzer.cycle_detector import detect_cycles
 from cycle_analyzer.combination_analyzer import analyze_combinations
 
-# ── Seuils de « fiabilité » ───────────────────────────────────────────────────
-MIN_ZONES_FIABLE = 10     # au moins 10 répétitions du cycle
-MIN_HIT_FIABLE   = 75.0   # au moins 75 % de zones gagnantes
+# ── Seuils de « fiabilité » (réglables via variables d'environnement) ─────────
+MIN_ZONES_FIABLE = int(os.environ.get("MIN_ZONES", "10"))    # répétitions minimum du cycle
+MIN_HIT_FIABLE   = float(os.environ.get("MIN_HIT", "75"))    # % de zones gagnantes minimum
 SEUIL_TRES       = 150.0  # rdt d'une combo fiable ≥ 150 % → ⭐⭐
 SEUIL_INTER      = 80.0   # rdt d'une combo fiable ≥ 80 %  → ⭐
 
@@ -162,7 +162,8 @@ def main():
     # Classement : meilleur verdict d'abord, puis meilleur rdt de la 1re combo
     rows.sort(key=lambda x: (x[0], -(x[3][0][1] if x[3] else -1e9)))
 
-    lines = [f"<b>🔎 Screener de cycles</b> — {len(tickers)} valeur(s) · fenêtre {period}\n"]
+    lines = [f"<b>🔎 Screener de cycles</b> — {len(tickers)} valeur(s) · fenêtre {period}",
+             f"Critère « fiable » : ≥ {MIN_ZONES_FIABLE} zones et ≥ {MIN_HIT_FIABLE:.0f}% réussite\n"]
     cur_rank = None
     for rank, tk, verdict, combos in rows:
         if rank != cur_rank:
