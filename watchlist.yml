@@ -173,7 +173,7 @@ alerts:
     interval: 1d
     direction: short
 
-    rdt: -314.8
+    rdt: 314.8
     zones: 17
     reussite: 82
   - ticker: ADA-USD
