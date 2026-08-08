@@ -1,0 +1,42 @@
+name: Screener de cycles
+
+# À la demande : tu colles une liste d'entreprises, il te dit lesquelles ont un
+# cycle intéressant (⭐⭐ / ⭐ / ➖ / ✗). Résultat dans le log ET sur Telegram.
+on:
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Symboles Yahoo séparés par des espaces ou virgules (ex: XLE XME GDX EWZ KRE)"
+        required: true
+        type: string
+      period:
+        description: "Fenêtre d'historique analysée"
+        required: false
+        default: "10y"
+        type: string
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Installer les dépendances
+        run: pip install numpy pandas yfinance scipy requests
+
+      - name: Screener les cycles
+        env:
+          TICKERS: ${{ inputs.tickers }}
+          SCREEN_PERIOD: ${{ inputs.period }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python screen_cycles.py
