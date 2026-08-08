@@ -10,9 +10,14 @@ on:
         required: true
         type: string
       period:
-        description: "Fenêtre d'historique analysée"
+        description: "Fenêtre glissante (ignorée si 'start' est renseigné)"
         required: false
         default: "10y"
+        type: string
+      start:
+        description: "Date de début FIXE (JJ/MM/AAAA) → stats figées. Vide = fenêtre glissante"
+        required: false
+        default: ""
         type: string
       min_zones:
         description: "Zones minimum pour qu'un cycle soit jugé fiable"
@@ -53,6 +58,7 @@ jobs:
         env:
           TICKERS: ${{ inputs.tickers }}
           SCREEN_PERIOD: ${{ inputs.period }}
+          SCREEN_START: ${{ inputs.start }}
           MIN_ZONES: ${{ inputs.min_zones }}
           MIN_HIT: ${{ inputs.min_hit }}
           # Telegram uniquement si demandé (par défaut « non » → résultat dans le log seulement)

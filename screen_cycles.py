@@ -77,9 +77,10 @@ def _dedup(combos):
     return kept
 
 
-def screen_ticker(ticker, period):
-    """Retourne dict(rank, verdict, combos=[combos intéressantes triées]) ou data KO."""
-    data = fetch_data(ticker, period=period, interval="1d")
+def screen_ticker(ticker, period, start=None):
+    """Retourne dict(rank, verdict, combos=[combos intéressantes triées]) ou data KO.
+    Si ``start`` est fourni (date fixe), le passé est FIGÉ → stats reproductibles."""
+    data = fetch_data(ticker, period=period, interval="1d", start=start)
     prices = get_close_prices(data)
     if len(prices) < 200:
         return dict(rank=4, verdict="✗ HISTORIQUE TROP COURT", combos=[])
@@ -139,15 +140,17 @@ def _send_telegram(text: str):
 def main():
     tickers = _parse_tickers(os.environ.get("TICKERS", ""))
     period = os.environ.get("SCREEN_PERIOD", "10y").strip() or "10y"
+    start = os.environ.get("SCREEN_START", "").strip() or None   # date FIXE → stats figées
     if not tickers:
         print("❌ Aucun ticker. Renseigne TICKERS (ex: \"XLE XME GDX EWZ\").")
         sys.exit(1)
 
-    print(f"Screening de {len(tickers)} ticker(s) sur {period}…\n")
+    fenetre = f"début figé {start}" if start else f"fenêtre {period}"
+    print(f"Screening de {len(tickers)} ticker(s) — {fenetre}…\n")
     rows = []
     for tk in tickers:
         try:
-            r = screen_ticker(tk, period)
+            r = screen_ticker(tk, period, start=start)
         except Exception as exc:
             print(f"  ⚠ {tk} -> erreur : {exc}")
             rows.append((5, tk, "⚠ DONNÉES INDISPONIBLES", []))
@@ -174,7 +177,7 @@ def main():
     for i, (rdt, tk, periods, zones, hit) in enumerate(top5, 1):
         print(f"  {i}. {tk:12} {'+'.join(map(str,periods))}b · Rdt {rdt:+.0f}% · {zones} zones · {hit:.0f}%")
 
-    lines = [f"<b>🔎 Screener de cycles</b> — {len(tickers)} valeur(s) · fenêtre {period}",
+    lines = [f"<b>🔎 Screener de cycles</b> — {len(tickers)} valeur(s) · {fenetre}",
              f"Critère « fiable » : ≥ {MIN_ZONES_FIABLE} zones et ≥ {MIN_HIT_FIABLE:.0f}% réussite\n"]
     cur_rank = None
     for rank, tk, verdict, combos in rows:
