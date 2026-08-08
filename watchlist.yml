@@ -64,6 +64,7 @@ alerts:
     start: 01/01/2012
     interval: 1d
     direction: long
+    📊 Rdt 373,6% · 31 zones · réussite 87%
 
   - ticker: UI
     cycles: "147"
@@ -76,6 +77,7 @@ alerts:
     start: 01/01/2012
     interval: 1d
     direction: long
+
 
   - ticker: AMGN           # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "201"
@@ -100,6 +102,13 @@ alerts:
     start: 01/01/2012
     interval: 1d
     direction: long
+
+  - ticker: IYT         
+    cycles: "175"
+    start: 01/01/2010
+    interval: 1d
+    direction: long
+    📊 Rdt 222,4% · 24 zones · réussite 92%
 
   # ----------------------- CRYPTO ---------------------
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
