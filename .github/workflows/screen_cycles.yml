@@ -14,6 +14,12 @@ on:
         required: false
         default: "10y"
         type: string
+      telegram:
+        description: "Envoyer aussi le résultat sur Telegram ?"
+        required: false
+        default: "non"
+        type: choice
+        options: ["non", "oui"]
 
 jobs:
   screen:
@@ -37,6 +43,7 @@ jobs:
         env:
           TICKERS: ${{ inputs.tickers }}
           SCREEN_PERIOD: ${{ inputs.period }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Telegram uniquement si demandé (par défaut « non » → résultat dans le log seulement)
+          TELEGRAM_TOKEN: ${{ inputs.telegram == 'oui' && secrets.TELEGRAM_TOKEN || '' }}
+          TELEGRAM_CHAT_ID: ${{ inputs.telegram == 'oui' && secrets.TELEGRAM_CHAT_ID || '' }}
         run: python screen_cycles.py
