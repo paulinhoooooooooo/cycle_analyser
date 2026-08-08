@@ -59,12 +59,12 @@ def compute_stats(ticker, periods, period, interval, start, direction):
         return None
 
     if (direction or "both").lower() == "short":
-        return dict(rdt=round(cr.bearish_total_return_pct, 1),
+        return dict(rdt=round(float(cr.bearish_total_return_pct), 1),
                     zones=int(len(cr.bearish_zones)),
-                    reussite=int(round(cr.bearish_hit_rate)))
-    return dict(rdt=round(cr.total_return_pct, 1),
+                    reussite=int(round(float(cr.bearish_hit_rate))))
+    return dict(rdt=round(float(cr.total_return_pct), 1),
                 zones=int(cr.n_zones),
-                reussite=int(round(cr.hit_rate)))
+                reussite=int(round(float(cr.hit_rate))))
 
 
 def main() -> None:
