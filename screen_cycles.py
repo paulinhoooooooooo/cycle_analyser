@@ -88,27 +88,25 @@ def screen_ticker(ticker, period):
     if not combos:
         return dict(rank=4, verdict="✗ PEU CYCLIQUE", combos=[])
 
+    # FILTRE STRICT : on ne garde QUE les combos qui respectent les seuils.
     fiables = [c for c in combos if c[2] >= MIN_ZONES_FIABLE and c[3] >= MIN_HIT_FIABLE and c[1] > 0]
-    if fiables:
-        keep = _dedup(sorted(fiables, key=lambda c: -c[1]))[:MAX_PAR_TICKER]
-        best_rdt = keep[0][1]
-        n = len(keep)
-        if best_rdt >= SEUIL_TRES:
-            v = "⭐⭐ TRÈS INTÉRESSANT"; rank = 0
-        elif best_rdt >= SEUIL_INTER:
-            v = "⭐ INTÉRESSANT"; rank = 1
-        else:
-            v = "➖ MOYEN"; rank = 2
-        if n > 1:
-            v += f" ({n} cycles)"
-        return dict(rank=rank, verdict=v, combos=keep)
+    if not fiables:
+        return dict(rank=4,
+                    verdict=f"✗ AUCUN CYCLE (≥{MIN_ZONES_FIABLE} zones & ≥{MIN_HIT_FIABLE:.0f}% non atteint)",
+                    combos=[])
 
-    # Pas de combo fiable → on montre les meilleures « brutes » comme repère
-    moyen = [c for c in combos if c[2] >= 6 and c[1] > 0]
-    if moyen:
-        keep = _dedup(sorted(moyen, key=lambda c: -c[1]))[:MAX_PAR_TICKER]
-        return dict(rank=3, verdict="➖ MOYEN (peu de répétitions)", combos=keep)
-    return dict(rank=4, verdict="✗ PEU CYCLIQUE", combos=[])
+    keep = _dedup(sorted(fiables, key=lambda c: -c[1]))[:MAX_PAR_TICKER]
+    best_rdt = keep[0][1]
+    n = len(keep)
+    if best_rdt >= SEUIL_TRES:
+        v = "⭐⭐ TRÈS INTÉRESSANT"; rank = 0
+    elif best_rdt >= SEUIL_INTER:
+        v = "⭐ INTÉRESSANT"; rank = 1
+    else:
+        v = "➖ MOYEN"; rank = 2
+    if n > 1:
+        v += f" ({n} cycles)"
+    return dict(rank=rank, verdict=v, combos=keep)
 
 
 def _parse_tickers(raw: str):
