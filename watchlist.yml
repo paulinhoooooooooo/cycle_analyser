@@ -45,24 +45,36 @@ alerts:
     interval: 1d
     direction: long
 
+    rdt: 132.4
+    zones: 9
+    reussite: 100
   - ticker: MRNA            # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "98,133,48"
     start: 01/01/2022
     interval: 1d
     direction: long
 
+    rdt: 184.9
+    zones: 10
+    reussite: 90
   - ticker: MRNA            # 🥈 #2 — combinaison secondaire en long
     cycles: "126,88"
     start: 01/01/2022
     interval: 1d
     direction: long
 
+    rdt: 225.7
+    zones: 12
+    reussite: 75
   - ticker: KO
     cycles: "82,162"
     start: 01/01/2016
     interval: 1d
     direction: long
 
+    rdt: 103.7
+    zones: 17
+    reussite: 94
   - ticker: MCHP
     cycles: "223,80"
     start: 01/01/2012
@@ -78,6 +90,9 @@ alerts:
     interval: 1d
     direction: long
 
+    rdt: 611.2
+    zones: 25
+    reussite: 84
   - ticker: ASML
     cycles: "66,97,126"
     start: 01/01/2012
@@ -85,30 +100,45 @@ alerts:
     direction: long
 
 
+    rdt: 221.4
+    zones: 30
+    reussite: 87
   - ticker: AMGN           # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "201"
     start: 01/01/2012
     interval: 1d
     direction: long
-    
+
+    rdt: 236.0
+    zones: 18
+    reussite: 89
   - ticker: AMGN            # 🥈 #2 — combinaison secondaire en long
     cycles: "93,187"
     start: 01/01/2012
     interval: 1d
     direction: long
-    
-  - ticker: CAT            
+
+    rdt: 227.5
+    zones: 20
+    reussite: 90
+  - ticker: CAT
     cycles: "179"
     start: 01/01/2016
     interval: 1d
     direction: long
-    
-  - ticker: ITW           
+
+    rdt: 322.8
+    zones: 15
+    reussite: 87
+  - ticker: ITW
     cycles: "80,179"
     start: 01/01/2012
     interval: 1d
     direction: long
 
+    rdt: 196.7
+    zones: 33
+    reussite: 91
   - ticker: IYT
     cycles: "175"
     start: 01/01/2010
@@ -125,18 +155,27 @@ alerts:
     interval: 1d
     direction: long
 
+    rdt: 1693.4
+    zones: 8
+    reussite: 75
   - ticker: SOL-USD          # 🥈 #2 — combinaison secondaire en long
     cycles: "176,90,45"
     start: 10/04/2020
     interval: 1d
     direction: long
 
+    rdt: 557.4
+    zones: 15
+    reussite: 80
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en short
     cycles: "1102,105,59"
     start: 10/04/2020
     interval: 1d
     direction: short
 
+    rdt: -314.8
+    zones: 17
+    reussite: 82
   - ticker: ADA-USD
     cycles: "286,164,85"
     period: 5y
@@ -150,3 +189,6 @@ alerts:
   #   start: 2021-01-01
   #   interval: 1d
 
+    rdt: 473.0
+    zones: 9
+    reussite: 89
