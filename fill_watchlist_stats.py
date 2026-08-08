@@ -59,7 +59,9 @@ def compute_stats(ticker, periods, period, interval, start, direction):
         return None
 
     if (direction or "both").lower() == "short":
-        return dict(rdt=round(float(cr.bearish_total_return_pct), 1),
+        # Pour un short, la baisse du marché = gain → on affiche le gain du short
+        # en positif (même convention que le score du logiciel : -rdt baissier).
+        return dict(rdt=round(-float(cr.bearish_total_return_pct), 1),
                     zones=int(len(cr.bearish_zones)),
                     reussite=int(round(float(cr.bearish_hit_rate))))
     return dict(rdt=round(float(cr.total_return_pct), 1),
