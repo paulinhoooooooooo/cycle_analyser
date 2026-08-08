@@ -160,6 +160,20 @@ def main():
     # Classement : meilleur verdict d'abord, puis meilleur rdt de la 1re combo
     rows.sort(key=lambda x: (x[0], -(x[3][0][1] if x[3] else -1e9)))
 
+    # TOP 5 GLOBAL : les meilleurs cycles (par rendement) toutes entreprises confondues,
+    # parmi ceux qui passent le filtre (≥ MIN_ZONES zones & ≥ MIN_HIT %).
+    tous = []
+    for rank, tk, verdict, combos in rows:
+        for b in combos:
+            tous.append((b[1], tk, b[0], b[2], b[3]))   # (rdt, ticker, periods, zones, hit)
+    tous.sort(key=lambda x: -x[0])
+    top5 = tous[:5]
+
+    print("\n" + "=" * 60)
+    print("🏆 TOP 5 DES MEILLEURS CYCLES (toutes entreprises)")
+    for i, (rdt, tk, periods, zones, hit) in enumerate(top5, 1):
+        print(f"  {i}. {tk:12} {'+'.join(map(str,periods))}b · Rdt {rdt:+.0f}% · {zones} zones · {hit:.0f}%")
+
     lines = [f"<b>🔎 Screener de cycles</b> — {len(tickers)} valeur(s) · fenêtre {period}",
              f"Critère « fiable » : ≥ {MIN_ZONES_FIABLE} zones et ≥ {MIN_HIT_FIABLE:.0f}% réussite\n"]
     cur_rank = None
@@ -171,9 +185,15 @@ def main():
         for b in combos:
             periods = "+".join(map(str, b[0]))
             lines.append(f"   ▸ {periods}b · Rdt {b[1]:+.0f}% · {b[2]} zones · réussite {b[3]:.0f}%")
-    lines.append("\n<i>Plusieurs ▸ = plusieurs cycles intéressants pour la valeur. "
-                 "« Fiable » = ≥10 zones et ≥75% réussite (le cycle se répète vraiment, "
-                 "plus fiable qu'un gros rdt sur peu de zones).</i>")
+
+    if top5:
+        lines.append("\n<b>🏆 TOP 5 des meilleurs cycles</b>")
+        for i, (rdt, tk, periods, zones, hit) in enumerate(top5, 1):
+            lines.append(f"   {i}. <b>{tk}</b> {'+'.join(map(str,periods))}b · "
+                         f"Rdt {rdt:+.0f}% · {zones} zones · {hit:.0f}%")
+
+    lines.append(f"\n<i>Plusieurs ▸ = plusieurs cycles intéressants pour la valeur. "
+                 f"« Fiable » = ≥{MIN_ZONES_FIABLE} zones et ≥{MIN_HIT_FIABLE:.0f}% réussite.</i>")
     report = "\n".join(lines)
 
     print("\n" + "=" * 60)
