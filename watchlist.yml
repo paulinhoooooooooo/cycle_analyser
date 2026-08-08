@@ -59,6 +59,12 @@ alerts:
     interval: 1d
     direction: long
 
+  - ticker: MCHP
+    cycles: "223,80"
+    start: 01/01/2012
+    interval: 1d
+    direction: long
+
   - ticker: UI
     cycles: "147"
     start: 14/10/2011
