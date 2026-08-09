@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 import os
 import sys
+from datetime import timedelta
 from pathlib import Path
 from typing import List, Tuple
 
@@ -62,6 +63,30 @@ def _state_at(cycles: List[CycleInfo], t: float) -> Tuple[bool, bool]:
         if rising:
             all_bear = False
     return all_bull, all_bear
+
+
+def _est_future_date(dates, bars_ahead: int):
+    """Date estimée à +bars_ahead barres, par extrapolation de l'espacement
+    calendaire RÉEL (s'adapte aux marchés 5j/7 actions et 7j/7 crypto)."""
+    last = dates[-1]
+    if len(dates) < 2:
+        return last
+    avg_days = (dates[-1] - dates[0]).days / max(len(dates) - 1, 1)
+    return last + timedelta(days=int(round(bars_ahead * avg_days)))
+
+
+def _zone_end_offset(cycles: List[CycleInfo], t_last: float, start_off: int,
+                     want_bull: bool, max_ahead: int = 1500):
+    """À partir de la 1re barre de la zone (start_off barres après la dernière
+    donnée), avance jusqu'à ce que l'alignement s'arrête. Retourne le décalage
+    (en barres) de la fin de zone, ou None si elle dépasse l'horizon."""
+    j = start_off
+    while j < start_off + max_ahead:
+        bull, bear = _state_at(cycles, t_last + j)
+        if not (bull if want_bull else bear):
+            return j
+        j += 1
+    return None
 
 
 def check_ticker(
@@ -123,9 +148,15 @@ def check_ticker(
         want_short = d in ("short", "both")
 
         if want_long and not bull_before and bull_after:
+            start_str = _est_future_date(dates, bars).strftime("%d/%m/%Y")
+            end_off = _zone_end_offset(cycles, t_last, k, want_bull=True)
+            end_str = (_est_future_date(dates, end_off).strftime("%d/%m/%Y")
+                       if end_off is not None else "au-delà de l'horizon")
             messages.append(
                 f"🟢 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📈 Alignement <b>HAUSSIER</b> dans <b>{bars} {barre_word}</b>\n"
+                f"🚀 Début du cycle : <b>{start_str}</b>\n"
+                f"🏁 Fin du cycle : <b>{end_str}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
@@ -137,9 +168,15 @@ def check_ticker(
             )
 
         if want_short and not bear_before and bear_after:
+            start_str = _est_future_date(dates, bars).strftime("%d/%m/%Y")
+            end_off = _zone_end_offset(cycles, t_last, k, want_bull=False)
+            end_str = (_est_future_date(dates, end_off).strftime("%d/%m/%Y")
+                       if end_off is not None else "au-delà de l'horizon")
             messages.append(
                 f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📉 Alignement <b>BAISSIER</b> dans <b>{bars} {barre_word}</b>\n"
+                f"🚀 Début du cycle : <b>{start_str}</b>\n"
+                f"🏁 Fin du cycle : <b>{end_str}</b>\n"
                 f"📅 Données au {last_date}"
             )
 
