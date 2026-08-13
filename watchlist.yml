@@ -20,6 +20,13 @@
 #   zones    : nombre de zones touchées (ex: 8)    │ affiché dans les notifs
 #   reussite : % de réussite (ex: 85)              ┘ Telegram. N'influence
 #              AUCUN calcul de cycle. (optionnels, saisis à la main)
+#   fige     : date de RÉFÉRENCE (JJ/MM/AAAA) — FIGE les dates de début/fin du
+#              cycle telles que le logiciel les voyait CE JOUR-LÀ. Elles ne
+#              bougent plus ensuite (seul le compte à rebours J-3/J-2/J-1
+#              décroît). Elles ne changent QUE si tu modifies cette entrée.
+#              Sans 'fige' : les dates se recalculent chaque jour (peuvent
+#              glisser de ±1 jour près d'un retournement). (optionnel)
+#              Astuce : mets la date du jour où tu ajoutes l'action.
 #
 # PLUSIEURS COMBINAISONS PAR TICKER : répéter le bloc avec le même ticker.
 # L'ORDRE DANS LE FICHIER fait le classement : la 1re entrée = 🥇 #1

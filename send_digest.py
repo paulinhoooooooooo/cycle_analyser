@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from cycle_analyzer.data_fetcher import fetch_data, get_close_prices, get_dates
 from cycle_analyzer.cycle_detector import CycleInfo, _detrend_log, _fit_sine, _phase_state
+from cycle_freeze import load_frozen
 
 
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN", "")
@@ -235,34 +236,31 @@ def _idx_to_date(dates_idx, i):
     return d.date() if hasattr(d, "date") else d
 
 
-def get_bull_status(ticker, periods, period, interval, start=None):
+def get_bull_status(ticker, periods, period, interval, start=None, fige=None):
     """État du cycle HAUSSIER (tous les cycles alignés à la hausse) pour ce ticker.
     Renvoie un dict :
       bull_now : bool
       bars     : int|None  — barres jusqu'à la prochaine transition (restantes si en
                              hausse ; avant le début sinon). None si hors horizon.
-      est      : date|None — date de cette transition
+      est      : date|None — date de cette transition (FIGÉE si `fige` est défini)
       start    : date|None — (si en hausse) date de début du cycle haussier en cours
       ret      : float|None — (si en hausse) rendement % depuis le début du cycle
+    ``fige`` : date de référence (JJ/MM/AAAA) → dates de cycle figées (voir cycle_freeze).
     Renvoie None si le calcul échoue (données indispo, etc.)."""
     try:
-        data = fetch_data(ticker, period=period, interval=interval, start=start)
-        prices = get_close_prices(data)
-        dates_idx = get_dates(data)
-        if prices is None or len(prices) < 30:
+        cycles, dates_idx, prices, N, t_today, date_of, n_ref = load_frozen(
+            ticker, periods, period, interval, start=start, fige=fige)
+        if prices is None or N < 30:
             print(f"  ⚠ {ticker} : pas assez de données")
             return None
-        cycles = _build_cycles(prices, periods)
-        N = len(prices)
-        t_last = float(N - 1)
-        bull_now = _state_at(cycles, t_last)[0]      # tous les cycles montent-ils ?
+        bull_now = _state_at(cycles, t_today)[0]      # tous les cycles montent-ils ?
 
         # Transitions à venir de l'état haussier (jusqu'à 2) : pour un cycle pas
         # encore commencé, on veut son DÉBUT (1re transition) ET sa FIN (2e).
         trans = []
         prev = bull_now
         for k in range(1, MAX_LOOKAHEAD + 1):
-            s = _state_at(cycles, t_last + k)[0]
+            s = _state_at(cycles, t_today + k)[0]
             if s != prev:
                 trans.append(max(1, k - 1))          # barre du pic/creux (comme le graphe)
                 prev = s
@@ -270,22 +268,22 @@ def get_bull_status(ticker, periods, period, interval, start=None):
                     break
 
         bars = trans[0] if trans else None           # 1re transition (fin si en hausse ; début sinon)
-        est = _est_future_date(dates_idx, bars) if bars else None
+        est = date_of(t_today + bars) if bars else None
 
         # Pré-hausse : barres jusqu'à la FIN du prochain cycle haussier (2e transition)
         end_bars = end_est = None
         if not bull_now and len(trans) >= 2:
             end_bars = trans[1]
-            end_est = _est_future_date(dates_idx, end_bars)
+            end_est = date_of(t_today + end_bars)
 
         # Si EN hausse : remonter pour trouver le DÉBUT du cycle haussier en cours
         start_date = ret = None
         if bull_now:
-            j = N - 1
+            j = int(t_today)
             while j - 1 >= 1 and _state_at(cycles, float(j - 1))[0]:
                 j -= 1
             start_bar = j                             # première barre haussière du run
-            start_date = _idx_to_date(dates_idx, start_bar)
+            start_date = date_of(start_bar)
             p0 = float(prices[start_bar]); p1 = float(prices[N - 1])
             ret = ((p1 - p0) / p0 * 100.0) if p0 else 0.0
 
@@ -349,6 +347,7 @@ def build_digest(config: dict) -> str:
         interval = entry.get("interval", "1d")
         start    = entry.get("start")
         direction = entry.get("direction", "both")
+        fige     = entry.get("fige")   # date de figeage optionnelle
 
         seen[ticker] = seen.get(ticker, 0) + 1
         rank, total = seen[ticker], counts[ticker]
@@ -359,7 +358,7 @@ def build_digest(config: dict) -> str:
         if note:
             header += f"\n  {note}"
 
-        st = get_bull_status(ticker, periods, period, interval, start)
+        st = get_bull_status(ticker, periods, period, interval, start, fige=fige)
         if st is None:
             key = (3, 0, i)
             line = "⚠ Données indisponibles."

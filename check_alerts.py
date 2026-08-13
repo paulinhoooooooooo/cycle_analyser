@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from cycle_analyzer.data_fetcher import fetch_data, get_close_prices, get_dates
 from cycle_analyzer.cycle_detector import CycleInfo, _detrend_log, _fit_sine, _phase_state
+from cycle_freeze import load_frozen
 
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
@@ -99,34 +100,21 @@ def check_ticker(
     rank_tag: str = "",
     direction: str = "both",
     stats: str = "",
+    fige: str = None,
 ) -> List[str]:
     """Retourne la liste des messages d'alerte pour ce ticker.
     ``stats`` : ligne de backtest optionnelle (rendement/zones/réussite) ajoutée
-    en pied de chaque alerte — purement informative."""
+    en pied de chaque alerte — purement informative.
+    ``fige`` : date de référence (JJ/MM/AAAA). Si présente, les dates de début/fin
+    du cycle sont FIGÉES (ne bougent plus jour après jour) ; seul le compte à
+    rebours J-3/J-2/J-1 décroît. Voir cycle_freeze.load_frozen."""
     try:
-        data = fetch_data(ticker, period=period, interval=interval, start=start)
+        cycles, dates, prices, N, t_today, date_of, n_ref = load_frozen(
+            ticker, periods, period, interval, start=start, fige=fige)
     except Exception as exc:
         print(f"  ⚠ Erreur fetch {ticker} : {exc}")
         return []
 
-    prices = get_close_prices(data)
-    dates = get_dates(data)
-    N = len(prices)
-    detrended, _ = _detrend_log(prices)
-
-    cycles: List[CycleInfo] = []
-    for p in periods:
-        A, B, amp = _fit_sine(detrended, float(p))
-        state, osc_val, cur_dir = _phase_state(A, B, float(p), N - 1)
-        cycles.append(CycleInfo(
-            period=p, period_exact=float(p),
-            amplitude=round(amp * prices[-1], 2), strength=1.0, stability=0.0,
-            phase_state=state, current_value=osc_val, current_direction=cur_dir,
-            oscillator=np.array([]), r_squared=0.0, amplitude_log=amp,
-            coeff_a=A, coeff_b=B,
-        ))
-
-    t_last = float(N - 1)
     last_date = dates[-1].strftime("%d/%m/%Y")
     periods_str = " + ".join(str(p) for p in periods)
 
@@ -135,8 +123,8 @@ def check_ticker(
     # k va jusqu'à lookahead+1 : l'événement (pic/creux) est à la barre k-1, donc
     # pour capter un événement « dans lookahead barres » il faut atteindre k=lookahead+1.
     for k in range(1, lookahead + 2):
-        bull_before, bear_before = _state_at(cycles, t_last + k - 1)
-        bull_after, bear_after = _state_at(cycles, t_last + k)
+        bull_before, bear_before = _state_at(cycles, t_today + k - 1)
+        bull_after, bear_after = _state_at(cycles, t_today + k)
 
         bars = max(1, k - 1)
         if bars > lookahead:
@@ -148,9 +136,9 @@ def check_ticker(
         want_short = d in ("short", "both")
 
         if want_long and not bull_before and bull_after:
-            start_str = _est_future_date(dates, bars).strftime("%d/%m/%Y")
-            end_off = _zone_end_offset(cycles, t_last, k, want_bull=True)
-            end_str = (_est_future_date(dates, end_off).strftime("%d/%m/%Y")
+            start_str = date_of(t_today + bars).strftime("%d/%m/%Y")
+            end_off = _zone_end_offset(cycles, t_today, k, want_bull=True)
+            end_str = (date_of(t_today + end_off).strftime("%d/%m/%Y")
                        if end_off is not None else "au-delà de l'horizon")
             messages.append(
                 f"🟢 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
@@ -168,9 +156,9 @@ def check_ticker(
             )
 
         if want_short and not bear_before and bear_after:
-            start_str = _est_future_date(dates, bars).strftime("%d/%m/%Y")
-            end_off = _zone_end_offset(cycles, t_last, k, want_bull=False)
-            end_str = (_est_future_date(dates, end_off).strftime("%d/%m/%Y")
+            start_str = date_of(t_today + bars).strftime("%d/%m/%Y")
+            end_off = _zone_end_offset(cycles, t_today, k, want_bull=False)
+            end_str = (date_of(t_today + end_off).strftime("%d/%m/%Y")
                        if end_off is not None else "au-delà de l'horizon")
             messages.append(
                 f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
@@ -248,6 +236,7 @@ def main() -> None:
         interval = entry.get("interval", "1d")
         start = entry.get("start")  # date de début fixe optionnelle (AAAA-MM-JJ)
         direction = entry.get("direction", "both")  # long / short / both
+        fige = entry.get("fige")  # date de figeage optionnelle (dates de cycle figées)
 
         seen[ticker] = seen.get(ticker, 0) + 1
         rank_tag = ""
@@ -259,7 +248,7 @@ def main() -> None:
         print(f"  {ticker} ({' + '.join(str(p) for p in periods)}b)… ", end="", flush=True)
         messages = check_ticker(ticker, periods, period, interval, lookahead,
                                 start=start, rank_tag=rank_tag, direction=direction,
-                                stats=stats)
+                                stats=stats, fige=fige)
 
         if messages:
             for msg in messages:
