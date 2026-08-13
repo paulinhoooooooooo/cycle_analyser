@@ -53,21 +53,11 @@ def _osc_at(c: CycleInfo, t: float) -> float:
     )
 
 
-def _rising_at(c: CycleInfo, t: float) -> bool:
-    """La sinusoïde du cycle monte-t-elle à la barre t ? Utilise la PENTE réelle
-    (dérivée continue) et non la différence discrète osc(t)-osc(t-1) : la pente
-    s'annule proprement au retournement, donc le jour de bascule est STABLE d'un
-    recalcul à l'autre (plus de glissement au creux du cycle)."""
-    w = 2 * math.pi / c.period
-    deriv = -c.coeff_a * math.sin(w * t) + c.coeff_b * math.cos(w * t)
-    return deriv > 0
-
-
 def _state_at(cycles: List[CycleInfo], t: float) -> Tuple[bool, bool]:
     """Retourne (tous_haussiers, tous_baissiers) à la barre t (extrapolée)."""
     all_bull = all_bear = True
     for c in cycles:
-        rising = _rising_at(c, t)
+        rising = _osc_at(c, t) > _osc_at(c, t - 1)
         if not rising:
             all_bull = False
         if rising:

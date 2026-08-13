@@ -190,15 +190,12 @@ def _bars_to_next_transition(A: float, B: float, T: float, N: int) -> Tuple[int,
     """Bars from last data point until the cycle changes direction (discrete osc differences)."""
     t_last = float(N - 1)
 
-    w = 2 * np.pi / T
+    def osc(t: float) -> float:
+        return A * np.cos(2 * np.pi * t / T) + B * np.sin(2 * np.pi * t / T)
 
-    def rising(t: float) -> bool:
-        # Pente réelle (dérivée continue) : stable au retournement (pas de jitter).
-        return (-A * np.sin(w * t) + B * np.cos(w * t)) > 0
-
-    curr_rising = rising(t_last)
+    curr_rising = osc(t_last) > osc(t_last - 1)
     for k in range(1, int(2 * T) + 4):
-        new_rising = rising(t_last + k)
+        new_rising = osc(t_last + k) > osc(t_last + k - 1)
         if new_rising != curr_rising:
             return k, ("pic" if curr_rising else "creux")
     return max(1, int(T // 2)), "pic"
@@ -211,9 +208,9 @@ def _next_combo_alignments(
     def state_at(t: float):
         bull = bear = True
         for c in cycles:
-            # Pente réelle (dérivée continue) : stable au retournement (pas de jitter).
-            w = 2 * np.pi / c.period
-            rising = (-c.coeff_a * np.sin(w * t) + c.coeff_b * np.cos(w * t)) > 0
+            osc_now  = c.coeff_a * np.cos(2*np.pi*t/c.period) + c.coeff_b * np.sin(2*np.pi*t/c.period)
+            osc_prev = c.coeff_a * np.cos(2*np.pi*(t-1)/c.period) + c.coeff_b * np.sin(2*np.pi*(t-1)/c.period)
+            rising = osc_now > osc_prev
             if not rising:
                 bull = False
             if rising:

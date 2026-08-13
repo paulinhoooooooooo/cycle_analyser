@@ -92,17 +92,10 @@ def _osc_at(c: CycleInfo, t: float) -> float:
     )
 
 
-def _rising_at(c: CycleInfo, t: float) -> bool:
-    """Pente réelle (dérivée continue) > 0 → monte. Stable au retournement, donc
-    les dates de début/fin ne glissent pas d'un recalcul à l'autre."""
-    w = 2 * math.pi / c.period
-    return (-c.coeff_a * math.sin(w * t) + c.coeff_b * math.cos(w * t)) > 0
-
-
 def _state_at(cycles: List[CycleInfo], t: float) -> Tuple[bool, bool]:
     all_bull = all_bear = True
     for c in cycles:
-        rising = _rising_at(c, t)
+        rising = _osc_at(c, t) > _osc_at(c, t - 1)
         if not rising:
             all_bull = False
         if rising:
