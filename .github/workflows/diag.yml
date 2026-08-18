@@ -1,0 +1,35 @@
+name: Diagnostic cycle (dates selon fige)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Ticker Yahoo"
+        required: true
+        default: "UI"
+      cycles:
+        description: "Cycles (ex: 147 ou 80,179)"
+        required: true
+        default: "147"
+      start:
+        description: "start (JJ/MM/AAAA), vide si aucun"
+        required: false
+        default: "14/10/2011"
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install requests pyyaml numpy pandas yfinance scipy
+      - name: Diagnostic
+        env:
+          TICKER: ${{ inputs.ticker }}
+          CYCLES: ${{ inputs.cycles }}
+          START: ${{ inputs.start }}
+        run: python diag_cycle.py
