@@ -396,9 +396,8 @@ def plot_single_cycle(
     ) / (amp + 1e-10)
     ax_osc.plot(t_fut, fut_osc_norm, color=BLUE, linewidth=1.0,
                 linestyle="--", alpha=0.45, zorder=3)
-    # Une SEULE date affichée = le repère unique ci-dessous (début du prochain
-    # cycle). On n'annote plus les pics/creux futurs sur l'oscillateur (évite
-    # une 2e date qui pouvait diverger de ~1-2 jours du repère principal).
+    # Dates affichées AU NIVEAU de la sinusoïde bleue (sur le prochain creux/pic).
+    _annotate_future_transitions(ax_osc, t_fut, fut_osc_norm, dates, N, BLUE)
 
     # Vertical lines
     ax_price.axvline(next_x, color=event_color, linewidth=1.4,
@@ -557,8 +556,8 @@ def plot_combination(
             + cycle.coeff_b * np.sin(2 * np.pi * t_fut / cycle.period)
         ) / amp_c
         ax_osc.plot(t_fut, fut_osc, color=col, linewidth=1.0, linestyle="--", alpha=0.45, zorder=3)
-        # Pas d'annotation de date sur l'oscillateur : une seule date = le repère
-        # unique du prochain alignement (voir _add_combo_marker).
+        # Dates affichées AU NIVEAU de la sinusoïde bleue (prochain creux/pic).
+        _annotate_future_transitions(ax_osc, t_fut, fut_osc, dates, N, col)
 
     import warnings
     with warnings.catch_warnings():
