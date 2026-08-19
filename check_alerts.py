@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from cycle_analyzer.data_fetcher import fetch_data, get_close_prices, get_dates
 from cycle_analyzer.cycle_detector import CycleInfo, _detrend_log, _fit_sine, _phase_state
 from cycle_freeze import load_frozen
+import cycle_locks as _cl
 
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
@@ -101,6 +102,8 @@ def check_ticker(
     direction: str = "both",
     stats: str = "",
     fige: str = None,
+    locked_start: str = None,
+    locked_end: str = None,
 ) -> List[str]:
     """Retourne la liste des messages d'alerte pour ce ticker.
     ``stats`` : ligne de backtest optionnelle (rendement/zones/réussite) ajoutée
@@ -136,10 +139,10 @@ def check_ticker(
         want_short = d in ("short", "both")
 
         if want_long and not bull_before and bull_after:
-            start_str = date_of(t_today + bars).strftime("%d/%m/%Y")
+            start_str = locked_start or date_of(t_today + bars).strftime("%d/%m/%Y")
             end_off = _zone_end_offset(cycles, t_today, k, want_bull=True)
-            end_str = (date_of(t_today + end_off).strftime("%d/%m/%Y")
-                       if end_off is not None else "au-delà de l'horizon")
+            end_str = locked_end or (date_of(t_today + end_off).strftime("%d/%m/%Y")
+                                     if end_off is not None else "au-delà de l'horizon")
             messages.append(
                 f"🟢 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📈 Alignement <b>HAUSSIER</b> dans <b>{bars} {barre_word}</b>\n"
@@ -156,10 +159,10 @@ def check_ticker(
             )
 
         if want_short and not bear_before and bear_after:
-            start_str = date_of(t_today + bars).strftime("%d/%m/%Y")
+            start_str = locked_start or date_of(t_today + bars).strftime("%d/%m/%Y")
             end_off = _zone_end_offset(cycles, t_today, k, want_bull=False)
-            end_str = (date_of(t_today + end_off).strftime("%d/%m/%Y")
-                       if end_off is not None else "au-delà de l'horizon")
+            end_str = locked_end or (date_of(t_today + end_off).strftime("%d/%m/%Y")
+                                     if end_off is not None else "au-delà de l'horizon")
             messages.append(
                 f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                 f"📉 Alignement <b>BAISSIER</b> dans <b>{bars} {barre_word}</b>\n"
@@ -216,6 +219,7 @@ def main() -> None:
 
     lookahead = int(config.get("lookaheadBars", 3))
     alerts_list = config.get("alerts", [])
+    _locks = _cl.load()   # verrous J-15 (lecture seule)
 
     print(f"Vérification de {len(alerts_list)} ticker(s) — J-{lookahead}…")
 
@@ -245,10 +249,13 @@ def main() -> None:
         rank_tag += {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
 
         stats = _backtest_note(entry)
+        _k = _cl.key_of(ticker, str(entry["cycles"]), direction)
         print(f"  {ticker} ({' + '.join(str(p) for p in periods)}b)… ", end="", flush=True)
         messages = check_ticker(ticker, periods, period, interval, lookahead,
                                 start=start, rank_tag=rank_tag, direction=direction,
-                                stats=stats, fige=fige)
+                                stats=stats, fige=fige,
+                                locked_start=_cl.locked_start(_locks, _k),
+                                locked_end=_cl.locked_end(_locks, _k))
 
         if messages:
             for msg in messages:

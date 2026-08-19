@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from cycle_analyzer.data_fetcher import fetch_data, get_close_prices, get_dates
 from cycle_analyzer.cycle_detector import CycleInfo, _detrend_log, _fit_sine, _phase_state
 from cycle_freeze import load_frozen
+import cycle_locks as _cl
 
 
 TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_TOKEN", "")
@@ -331,6 +332,8 @@ def build_digest(config: dict) -> str:
     if not alerts_list:
         return "Aucun ticker dans watchlist.yml."
 
+    _locks = _cl.load()   # verrous J-15 (lecture seule ici)
+
     # Rang par ticker (l'ordre dans le fichier fait le classement).
     counts: dict = {}
     for entry in alerts_list:
@@ -359,6 +362,8 @@ def build_digest(config: dict) -> str:
             header += f"\n  {note}"
 
         st = get_bull_status(ticker, periods, period, interval, start, fige=fige)
+        # Applique les dates VERROUILLÉES (J-15) si elles existent (compte à rebours reste live).
+        st = _cl.apply_to_status(st, _locks, _cl.key_of(ticker, str(entry["cycles"]), direction))
         if st is None:
             key = (3, 0, i)
             line = "⚠ Données indisponibles."

@@ -10,6 +10,9 @@ on:
     - cron: '7 19 * * *'
   workflow_dispatch:   # déclenchement manuel depuis l'interface GitHub
 
+permissions:
+  contents: write   # pour recommiter cycle_locks.json (verrous J-15)
+
 jobs:
   check-alerts:
     runs-on: ubuntu-latest
@@ -27,8 +30,23 @@ jobs:
       - name: Installer les dépendances
         run: pip install -r requirements.txt
 
+      - name: Mettre à jour les verrous J-15
+        run: python update_locks.py
+
       - name: Vérifier les alertes et notifier
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python check_alerts.py
+
+      - name: Commiter les verrous si modifiés
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cycle_locks.json
+          if git diff --cached --quiet; then
+            echo "Verrous inchangés."
+          else
+            git commit -m "Verrous de cycle (J-15) mis à jour [skip ci]"
+            git push
+          fi
