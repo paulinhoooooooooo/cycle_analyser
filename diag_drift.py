@@ -24,6 +24,17 @@ step = int(os.environ.get("STEP", "7"))
 data = fetch_data(ticker, period="10y", interval="1d", start=start)
 prices_full = get_close_prices(data)
 dates_full = get_dates(data)
+
+# Mode auto : détecte le cycle LONG le plus fiable (>= 300 barres).
+if os.environ.get("CYCLES", "").strip().lower() == "auto":
+    from cycle_analyzer.cycle_detector import detect_cycles
+    cands = detect_cycles(prices_full, min_period=250, max_period=1500, n_cycles=30)
+    longs = [c for c in cands if c.period >= 300] or [c for c in cands if c.period >= 250]
+    chosen = longs[0] if longs else cands[0]      # detect_cycles trie par stabilité desc
+    cycles_list = [int(chosen.period)]
+    print(f"Cycle long auto-détecté : {chosen.period} barres "
+          f"(stabilité {chosen.stability:.2f}, force {chosen.strength:.2f})")
+
 asofs = list(pd.bdate_range(asof_start, asof_end)[::step])
 
 print(f"{ticker} | cycles {cycles_list} | start {start}")
