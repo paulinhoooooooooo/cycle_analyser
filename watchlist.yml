@@ -154,6 +154,14 @@ alerts:
     rdt: 222.4
     zones: 24
     reussite: 92
+  - ticker: KR
+    cycles: 129,172
+    start: 01/01/2016
+    interval: 1d
+    direction: long
+    rdt: 189
+    zones: 21
+    reussite: 90
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
     start: 10/04/2020
