@@ -1,0 +1,40 @@
+name: Comparer des combinaisons de cycles
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Ticker Yahoo"
+        required: true
+        default: "RS"
+      start:
+        description: "start (JJ/MM/AAAA)"
+        required: false
+        default: "01/02/2016"
+      direction:
+        description: "long / short"
+        required: false
+        default: "long"
+      combos:
+        description: "Combos séparées par ';' (cycles par ',')  ex: 178;80,180"
+        required: true
+        default: "178;80,180"
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install requests pyyaml numpy pandas yfinance scipy ruamel.yaml
+      - name: Comparer
+        env:
+          TICKER: ${{ inputs.ticker }}
+          START: ${{ inputs.start }}
+          DIRECTION: ${{ inputs.direction }}
+          COMBOS: ${{ inputs.combos }}
+        run: python diag_compare.py
