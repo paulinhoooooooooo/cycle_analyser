@@ -178,6 +178,14 @@ alerts:
     rdt: 206.3
     zones: 23
     reussite: 100
+  - ticker: AEM
+    cycles: 75,57
+    start: 01/02/2016
+    interval: 1d
+    direction: long
+    rdt: 355.0
+    zones: 40
+    reussite: 88
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
     start: 10/04/2020
