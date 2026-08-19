@@ -1,0 +1,50 @@
+name: Diagnostic dérive (début de cycle dans le temps)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Ticker Yahoo"
+        required: true
+        default: "IYT"
+      cycles:
+        description: "Cycles (ex: 175)"
+        required: true
+        default: "175"
+      start:
+        description: "start (JJ/MM/AAAA)"
+        required: false
+        default: "01/01/2010"
+      asof_start:
+        description: "Début de la simulation (JJ/MM/AAAA)"
+        required: false
+        default: "01/01/2025"
+      asof_end:
+        description: "Fin de la simulation (JJ/MM/AAAA)"
+        required: false
+        default: "01/12/2025"
+      step:
+        description: "Pas en jours ouvrés"
+        required: false
+        default: "10"
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install requests pyyaml numpy pandas yfinance scipy
+      - name: Dérive
+        env:
+          TICKER: ${{ inputs.ticker }}
+          CYCLES: ${{ inputs.cycles }}
+          START: ${{ inputs.start }}
+          ASOF_START: ${{ inputs.asof_start }}
+          ASOF_END: ${{ inputs.asof_end }}
+          STEP: ${{ inputs.step }}
+        run: python diag_drift.py
