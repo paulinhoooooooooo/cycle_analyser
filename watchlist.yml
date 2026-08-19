@@ -170,6 +170,11 @@ alerts:
     rdt: 195.0
     zones: 18
     reussite: 94
+  - ticker: RS
+    cycles: 80,180
+    start: 01/02/2016
+    interval: 1d
+    direction: long
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
     start: 10/04/2020
