@@ -271,6 +271,10 @@ Exemples :
     parser.add_argument("--SLf", type=float, default=None, metavar="PCT",
                         help="Simuler un stop-loss FIXE de X%% sous le prix d'entrée. "
                              "Le SL ne bouge pas même si le prix monte (ex: --SLf 5).")
+    parser.add_argument("--fige", default=None, metavar="JJ/MM/AAAA",
+                        help="Fige l'analyse à cette date de référence : les données sont "
+                             "tronquées jusqu'à cette date, donc le rapport reproduit EXACTEMENT "
+                             "ce que le logiciel voyait ce jour-là (dates de cycle reproductibles).")
     args = parser.parse_args()
     # Consolidate: if --SLf given, treat as --SL in fixed mode
     _sl_fixed_mode = args.SLf is not None
@@ -325,6 +329,20 @@ Exemples :
 
     prices = get_close_prices(data)
     dates = get_dates(data)
+
+    # ── --fige : tronque les données à la date de référence (dates reproductibles)
+    if args.fige:
+        import numpy as _np
+        from cycle_freeze import parse_ref_date
+        _cut = parse_ref_date(args.fige)
+        if _cut is not None:
+            _keep = int(_np.asarray(dates <= _cut).sum())
+            if _keep >= 50:
+                prices = prices[:_keep]
+                dates = dates[:_keep]
+                console.print(f"[dim]Analyse figée au {args.fige} — {_keep} barres retenues.[/dim]")
+            else:
+                console.print(f"[yellow]--fige {args.fige} : trop peu de barres avant cette date, ignoré.[/yellow]")
 
     # ── Fast path: --select bypasses full analysis ────────────────────────────
     if args.select:

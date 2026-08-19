@@ -326,6 +326,24 @@ def plot_single_cycle(
     bull_compound = (bull_cmp - 1) * 100
     short_compound = (short_cmp - 1) * 100
 
+    # ── Repère du DÉBUT du cycle EN COURS (haussier ou baissier) ──────────────
+    # Date OBSERVÉE (bord gauche de la zone actuelle), pas une projection : stable.
+    # Avec --fige, les données sont tronquées → cette date ne bouge plus.
+    _cur_bull = bool(bullish[N - 1])
+    _cs = N - 1
+    while _cs - 1 >= 0 and bool(bullish[_cs - 1]) == _cur_bull:
+        _cs -= 1
+    _cur_date = dates[_cs].strftime("%d/%m/%Y")
+    _cur_label = "Début cycle HAUSSIER" if _cur_bull else "Début cycle BAISSIER"
+    _cur_color = GREEN if _cur_bull else RED
+    ax_price.axvline(_cs, color=_cur_color, linewidth=1.2, linestyle=":", alpha=0.85, zorder=5)
+    ax_price.annotate(
+        f"{_cur_label}\n{_cur_date}",
+        xy=(_cs, y_top), xytext=(_cs + max(3, int(cycle.period * 0.05)), y_top),
+        color=_cur_color, fontsize=6.5, fontweight="bold", ha="left", va="top", zorder=7,
+        bbox=dict(boxstyle="round,pad=0.25", facecolor=PANEL, edgecolor=_cur_color, alpha=0.9),
+    )
+
     ax_price.set_title(
         f"{ticker} — Cycle {cycle.period} barres  "
         f"| Amp: {cycle.amplitude:,.2f}  | Force: {cycle.strength:.2f}  "
