@@ -55,7 +55,6 @@ alerts:
     rdt: 132.4
     zones: 9
     reussite: 100
-    fige: 18/08/2026
   - ticker: MRNA            # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "98,133,48"
     start: 01/01/2022
@@ -65,7 +64,6 @@ alerts:
     rdt: 184.9
     zones: 10
     reussite: 90
-    fige: 18/08/2026
   - ticker: MRNA            # 🥈 #2 — combinaison secondaire en long
     cycles: "126,88"
     start: 01/01/2022
@@ -75,7 +73,6 @@ alerts:
     rdt: 225.7
     zones: 12
     reussite: 75
-    fige: 18/08/2026
   - ticker: KO
     cycles: "82,162"
     start: 01/01/2016
@@ -85,7 +82,6 @@ alerts:
     rdt: 103.7
     zones: 17
     reussite: 94
-    fige: 18/08/2026
   - ticker: MCHP
     cycles: "223,80"
     start: 01/01/2012
@@ -95,7 +91,6 @@ alerts:
     zones: 31
     reussite: 87
 
-    fige: 18/08/2026
   - ticker: UI
     cycles: "147"
     start: 14/10/2011
@@ -105,7 +100,6 @@ alerts:
     rdt: 611.2
     zones: 25
     reussite: 84
-    fige: 10/08/2026
   - ticker: ASML
     cycles: "66,97,126"
     start: 01/01/2012
@@ -116,7 +110,6 @@ alerts:
     rdt: 221.4
     zones: 30
     reussite: 87
-    fige: 18/08/2026
   - ticker: AMGN           # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "201"
     start: 01/01/2012
@@ -126,7 +119,6 @@ alerts:
     rdt: 236.0
     zones: 18
     reussite: 89
-    fige: 18/08/2026
   - ticker: AMGN            # 🥈 #2 — combinaison secondaire en long
     cycles: "93,187"
     start: 01/01/2012
@@ -136,7 +128,6 @@ alerts:
     rdt: 227.5
     zones: 20
     reussite: 90
-    fige: 18/08/2026
   - ticker: CAT
     cycles: "179"
     start: 01/01/2016
@@ -146,7 +137,6 @@ alerts:
     rdt: 322.8
     zones: 15
     reussite: 87
-    fige: 18/08/2026
   - ticker: ITW
     cycles: "80,179"
     start: 01/01/2012
@@ -156,7 +146,6 @@ alerts:
     rdt: 196.7
     zones: 33
     reussite: 91
-    fige: 18/08/2026
   - ticker: IYT
     cycles: "175"
     start: 01/01/2010
@@ -165,9 +154,6 @@ alerts:
     rdt: 222.4
     zones: 24
     reussite: 92
-    fige: 18/08/2026
-
-  # ----------------------- CRYPTO ---------------------
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
     start: 10/04/2020
@@ -177,7 +163,6 @@ alerts:
     rdt: 1693.4
     zones: 8
     reussite: 75
-    fige: 18/08/2026
   - ticker: SOL-USD          # 🥈 #2 — combinaison secondaire en long
     cycles: "176,90,45"
     start: 10/04/2020
@@ -187,7 +172,6 @@ alerts:
     rdt: 557.4
     zones: 15
     reussite: 80
-    fige: 18/08/2026
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en short
     cycles: "1102,105,59"
     start: 10/04/2020
@@ -197,7 +181,6 @@ alerts:
     rdt: 314.8
     zones: 17
     reussite: 82
-    fige: 18/08/2026
   - ticker: ADA-USD
     cycles: "286,164,85"
     period: 5y
@@ -206,11 +189,3 @@ alerts:
     rdt: 473.0
     zones: 9
     reussite: 89
-    fige: 18/08/2026
-
-  # Exemple avec début FIXE : le passé ne bouge plus, cycles reproductibles.
-  # Décommente et adapte (ici MRNA figé au 01/01/2021 au lieu de la fenêtre 5y).
-  # - ticker: MRNA
-  #   cycles: "86,26"
-  #   start: 2021-01-01
-  #   interval: 1d
