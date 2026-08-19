@@ -116,7 +116,7 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 240.7
+    rdt: 242.2
     zones: 19
     reussite: 90
   - ticker: AMGN            # 🥈 #2 — combinaison secondaire en long
@@ -175,6 +175,9 @@ alerts:
     start: 01/02/2016
     interval: 1d
     direction: long
+    rdt: 206.3
+    zones: 23
+    reussite: 100
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
     start: 10/04/2020
