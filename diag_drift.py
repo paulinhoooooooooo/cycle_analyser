@@ -15,7 +15,8 @@ from cycle_analyzer.data_fetcher import fetch_data, get_close_prices, get_dates
 from send_digest import _build_cycles, _state_at, _est_future_date
 
 ticker = os.environ.get("TICKER", "IYT").upper()
-cycles_list = [int(x) for x in os.environ.get("CYCLES", "175").replace(" ", "").split(",")]
+_cyc_env = os.environ.get("CYCLES", "175").strip()
+cycles_list = None if _cyc_env.lower() == "auto" else [int(x) for x in _cyc_env.replace(" ", "").split(",")]
 start = os.environ.get("START") or None
 asof_start = pd.to_datetime(os.environ.get("ASOF_START", "01/01/2025"), dayfirst=True)
 asof_end = pd.to_datetime(os.environ.get("ASOF_END", "01/03/2026"), dayfirst=True)
