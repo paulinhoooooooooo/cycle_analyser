@@ -162,6 +162,11 @@ alerts:
     rdt: 187.8
     zones: 21
     reussite: 86
+  - ticker: RIO
+    cycles: 194,107
+    start: 01/02/2016
+    interval: 1d
+    direction: long
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
     start: 10/04/2020
