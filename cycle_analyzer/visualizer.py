@@ -113,6 +113,26 @@ def _annotate_future_transitions(
             break
 
 
+def _annotate_recent_transitions(ax, x, osc_norm, dates, color, n_each: int = 2) -> None:
+    """Annote les derniers creux ET pics PASSÉS de l'oscillateur (les n_each de
+    chaque type = ~2 derniers cycles) avec leur date OBSERVÉE."""
+    peaks, troughs = [], []
+    for i in range(1, len(osc_norm) - 1):
+        v = float(osc_norm[i])
+        if v > float(osc_norm[i - 1]) and v >= float(osc_norm[i + 1]) and v > 0.5:
+            peaks.append(i)
+        elif v < float(osc_norm[i - 1]) and v <= float(osc_norm[i + 1]) and v < -0.5:
+            troughs.append(i)
+    for i in peaks[-n_each:]:
+        ax.text(x[i], float(osc_norm[i]) + 0.18, dates[int(i)].strftime("%d/%m/%Y"),
+                color=color, fontsize=5.0, ha="center", va="bottom",
+                zorder=6, clip_on=True, alpha=0.85)
+    for i in troughs[-n_each:]:
+        ax.text(x[i], float(osc_norm[i]) - 0.18, dates[int(i)].strftime("%d/%m/%Y"),
+                color=color, fontsize=5.0, ha="center", va="top",
+                zorder=6, clip_on=True, alpha=0.85)
+
+
 # ── Cycle table figure ────────────────────────────────────────────────────────
 
 def plot_cycle_table(cycles: List[CycleInfo]) -> plt.Figure:
@@ -360,6 +380,8 @@ def plot_single_cycle(
     # Draw oscillator normalized
     osc_norm = osc / (amp + 1e-10)
     ax_osc.plot(x, osc_norm, color=BLUE, linewidth=1.5, zorder=3, label=f"Oscillateur {cycle.period}")
+    # Dates des 2 derniers creux/pics PASSÉS (en plus des futurs).
+    _annotate_recent_transitions(ax_osc, x, osc_norm, dates, BLUE)
     ax_osc.axhline(0, color=GRID, linewidth=1, zorder=2)
     ax_osc.axhline(1, color=GREEN, linewidth=0.7, linestyle="--", alpha=0.5, zorder=2)
     ax_osc.axhline(-1, color=RED, linewidth=0.7, linestyle="--", alpha=0.5, zorder=2)
@@ -499,6 +521,8 @@ def plot_combination(
         bull = get_bullish_mask(prices, cycle.period)
         ax.fill_between(x, osc_norm, 0, where=bull, color=GREEN, alpha=0.25, zorder=1)
         ax.fill_between(x, osc_norm, 0, where=~bull, color=RED, alpha=0.20, zorder=1)
+        # Dates des 2 derniers creux/pics PASSÉS (en plus des futurs).
+        _annotate_recent_transitions(ax, x, osc_norm, dates, col)
         ax.set_ylim(-1.55, 1.55)
 
         ax.set_ylabel(f"{cycle.period}b", fontsize=8, color=col)
