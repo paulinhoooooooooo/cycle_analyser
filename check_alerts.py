@@ -28,6 +28,7 @@ from cycle_analyzer.data_fetcher import fetch_data, get_close_prices, get_dates
 from cycle_analyzer.cycle_detector import CycleInfo, _detrend_log, _fit_sine, _phase_state
 from cycle_freeze import load_frozen
 import cycle_locks as _cl
+import backtest_live as _bl
 
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
@@ -275,8 +276,10 @@ def check_ticker(
                     f"📅 Données au {last_date}"
                 )
 
-    if stats:
-        messages = [f"{m}\n{stats}" for m in messages]
+    # La ligne de backtest (stats) est ajoutée par main() APRÈS coup : elle peut
+    # être recalculée en direct si un cycle vient de se terminer (voir
+    # _backtest_line_for). Le paramètre ``stats`` reste accepté pour compat mais
+    # n'est plus utilisé ici.
     return messages, last_date
 
 
@@ -303,6 +306,61 @@ def _backtest_note(entry: dict) -> str:
         except (TypeError, ValueError):
             bits.append(f"réussite {reuss}")
     return ("📊 Backtest : " + " · ".join(bits)) if bits else ""
+
+
+def _fmt_stats(rdt, zones, reuss, prefix: str) -> str:
+    """Formate une ligne de stats 'prefix : Rdt +X% · Y zones · réussite Z%'
+    (virgule décimale française)."""
+    bits = []
+    try:
+        bits.append(f"Rdt {float(str(rdt).replace(',', '.')):+g}%".replace(".", ","))
+    except (TypeError, ValueError):
+        bits.append(f"Rdt {rdt}")
+    bits.append(f"{int(zones)} zones")
+    try:
+        bits.append(f"réussite {float(str(reuss).replace(',', '.')):g}%".replace(".", ","))
+    except (TypeError, ValueError):
+        bits.append(f"réussite {reuss}")
+    return f"{prefix} : " + " · ".join(bits)
+
+
+def _static_zones(entry: dict):
+    """Nombre de zones inscrit dans watchlist.yml (int), ou None si absent."""
+    z = entry.get("zones")
+    try:
+        return int(z)
+    except (TypeError, ValueError):
+        return None
+
+
+def _backtest_line_for(entry: dict, ticker: str, periods, period: str,
+                       interval: str, start, direction: str) -> str:
+    """Ligne de backtest à afficher sous l'alerte.
+
+    Recalcule le backtest EN DIRECT (zones terminées uniquement). Si un cycle
+    vient de se terminer — c.-à-d. qu'il y a désormais PLUS de zones terminées
+    que ce qu'indique watchlist.yml — on affiche les valeurs à jour + un drapeau
+    « mis à jour ». Sinon on affiche la ligne figée du fichier (inchangée).
+    watchlist.yml n'est JAMAIS réécrit : la mise à jour est purement live."""
+    static = _backtest_note(entry)
+    base_zones = _static_zones(entry)
+    if base_zones is None:
+        return static
+    try:
+        live = _bl.compute_completed_stats(ticker, periods, period, interval, start, direction)
+    except Exception as exc:
+        print(f"    (backtest live indispo : {exc}) ", end="")
+        return static
+    if not live or live["zones"] <= base_zones:
+        return static   # aucun nouveau cycle terminé → on garde le fichier
+
+    # Un (ou plusieurs) cycle(s) terminé(s) depuis le dernier relevé du fichier.
+    updated = _fmt_stats(live["rdt"], live["zones"], live["reussite"], "📊 Backtest (à jour)")
+    old = _fmt_stats(entry.get("rdt", entry.get("rendement")),
+                     base_zones,
+                     entry.get("reussite", entry.get("réussite", entry.get("success"))),
+                     "fichier GitHub").replace("fichier GitHub : ", "")
+    return f"{updated}\n🔄 <b>Backtest mis à jour</b> (un cycle vient de se terminer) — avant : {old}"
 
 
 def main() -> None:
@@ -348,12 +406,11 @@ def main() -> None:
             rank_tag = f" {rank_icons.get(seen[ticker], '▫️')} <b>#{seen[ticker]}</b>"
         rank_tag += {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
 
-        stats = _backtest_note(entry)
         _k = _cl.key_of(ticker, str(entry["cycles"]), direction)
         print(f"  {ticker} ({' + '.join(str(p) for p in periods)}b)… ", end="", flush=True)
         messages, data_date = check_ticker(ticker, periods, period, interval, lookahead,
                                 start=start, rank_tag=rank_tag, direction=direction,
-                                stats=stats, fige=fige,
+                                fige=fige,
                                 locked_start=_cl.locked_start(_locks, _k),
                                 locked_end=_cl.locked_end(_locks, _k),
                                 today=_today)
@@ -367,6 +424,13 @@ def main() -> None:
             if _state.get(_k) == _today_iso:
                 print(f"déjà notifié aujourd'hui ({_today_iso}) — ignoré")
             else:
+                # Ligne de backtest recalculée en direct (zones terminées) : signale
+                # « mis à jour » si un cycle vient de se terminer. watchlist.yml
+                # n'est jamais réécrit.
+                note = _backtest_line_for(entry, ticker, periods, period, interval,
+                                          start, direction)
+                if note:
+                    messages = [f"{m}\n{note}" for m in messages]
                 for msg in messages:
                     send_telegram(msg)
                     total_sent += 1
