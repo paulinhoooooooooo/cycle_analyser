@@ -39,14 +39,14 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python check_alerts.py
 
-      - name: Commiter les verrous si modifiés
+      - name: Commiter les verrous / l'état d'alerte si modifiés
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add cycle_locks.json
+          git add cycle_locks.json alert_state.json
           if git diff --cached --quiet; then
-            echo "Verrous inchangés."
+            echo "Verrous et état d'alerte inchangés."
           else
-            git commit -m "Verrous de cycle (J-15) mis à jour [skip ci]"
+            git commit -m "Verrous J-15 / état anti-doublon mis à jour [skip ci]"
             git push
           fi

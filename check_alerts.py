@@ -33,6 +33,31 @@ import cycle_locks as _cl
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
+# ── Anti-doublon ────────────────────────────────────────────────────────────
+# On mémorise, par combinaison (ticker|cycles|direction), la DATE DES DONNÉES
+# (dernière bougie) pour laquelle on a déjà notifié. Tant que cette date
+# n'avance pas — typiquement le week-end/jours fériés pour une action, quand
+# aucune nouvelle bougie n'apparaît — on ne renvoie pas la même alerte.
+# Les cryptos (données 7j/7) ne sont jamais bloquées : leur date avance chaque
+# jour. Fichier recommité par le workflow (comme cycle_locks.json).
+import json
+
+ALERT_STATE_FILE = Path("alert_state.json")
+
+
+def _load_alert_state() -> dict:
+    try:
+        return json.loads(ALERT_STATE_FILE.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def _save_alert_state(state: dict) -> None:
+    ALERT_STATE_FILE.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
 
 def send_telegram(message: str) -> None:
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -116,7 +141,7 @@ def check_ticker(
             ticker, periods, period, interval, start=start, fige=fige)
     except Exception as exc:
         print(f"  ⚠ Erreur fetch {ticker} : {exc}")
-        return []
+        return [], None
 
     last_date = dates[-1].strftime("%d/%m/%Y")
     periods_str = " + ".join(str(p) for p in periods)
@@ -180,7 +205,7 @@ def check_ticker(
 
     if stats:
         messages = [f"{m}\n{stats}" for m in messages]
-    return messages
+    return messages, last_date
 
 
 def _backtest_note(entry: dict) -> str:
@@ -220,6 +245,7 @@ def main() -> None:
     lookahead = int(config.get("lookaheadBars", 3))
     alerts_list = config.get("alerts", [])
     _locks = _cl.load()   # verrous J-15 (lecture seule)
+    _state = _load_alert_state()   # anti-doublon (date de données déjà notifiée)
 
     print(f"Vérification de {len(alerts_list)} ticker(s) — J-{lookahead}…")
 
@@ -251,20 +277,29 @@ def main() -> None:
         stats = _backtest_note(entry)
         _k = _cl.key_of(ticker, str(entry["cycles"]), direction)
         print(f"  {ticker} ({' + '.join(str(p) for p in periods)}b)… ", end="", flush=True)
-        messages = check_ticker(ticker, periods, period, interval, lookahead,
+        messages, data_date = check_ticker(ticker, periods, period, interval, lookahead,
                                 start=start, rank_tag=rank_tag, direction=direction,
                                 stats=stats, fige=fige,
                                 locked_start=_cl.locked_start(_locks, _k),
                                 locked_end=_cl.locked_end(_locks, _k))
 
         if messages:
-            for msg in messages:
-                send_telegram(msg)
-                total_sent += 1
-            print(f"{len(messages)} alerte(s) envoyée(s)")
+            # Anti-doublon : si on a déjà notifié cette combinaison pour la même
+            # date de données (aucune nouvelle bougie depuis — ex. week-end), on
+            # n'envoie rien. Le compte à rebours ne bouge que quand une VRAIE
+            # nouvelle barre apparaît.
+            if _state.get(_k) == data_date:
+                print(f"déjà notifié (données au {data_date}) — ignoré")
+            else:
+                for msg in messages:
+                    send_telegram(msg)
+                    total_sent += 1
+                _state[_k] = data_date
+                print(f"{len(messages)} alerte(s) envoyée(s)")
         else:
             print("aucune alerte aujourd'hui")
 
+    _save_alert_state(_state)
     print(f"\nTerminé — {total_sent} alerte(s) au total.")
 
 
