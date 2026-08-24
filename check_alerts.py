@@ -124,6 +124,24 @@ def _cd_label(n: int) -> str:
     return f"dans <b>{n} {jour}</b> (J-{n})"
 
 
+def _current_zone_stats(cycles, prices, N: int, t_today: float, want_bull: bool):
+    """Pour un cycle EN COURS (haussier si want_bull, sinon baissier), remonte les
+    barres jusqu'à la 1re barre du run pour trouver la DATE DE DÉBUT et le
+    RENDEMENT depuis ce début (même méthode que send_digest.get_bull_status).
+    Retourne (start_bar, ret_pct). Pour un cycle baissier, le rendement est
+    inversé (une baisse du prix = gain pour une position short)."""
+    idx = 0 if want_bull else 1                     # 0 = haussier, 1 = baissier
+    j = int(round(t_today))
+    while j - 1 >= 1 and _state_at(cycles, float(j - 1))[idx]:
+        j -= 1
+    start_bar = max(0, j)
+    p0 = float(prices[start_bar])
+    p1 = float(prices[N - 1])
+    change = ((p1 - p0) / p0 * 100.0) if p0 else 0.0
+    ret = change if want_bull else -change
+    return start_bar, ret
+
+
 def _zone_end_offset(cycles: List[CycleInfo], t_last: float, start_off: int,
                      want_bull: bool, max_ahead: int = 1500):
     """À partir de la 1re barre de la zone (start_off barres après la dernière
@@ -214,9 +232,13 @@ def check_ticker(
             ev = _parse_ddmmyyyy(end_ev_str)
             n = _countdown_days(ev, today) if ev else None
             if n is not None and 1 <= n <= lookahead:
+                start_bar, ret = _current_zone_stats(cycles, prices, N, t_today, want_bull=True)
+                cyc_start = locked_start or date_of(start_bar).strftime("%d/%m/%Y")
                 messages.append(
                     f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                     f"📉 Fin de l'alignement <b>HAUSSIER</b> {_cd_label(n)}\n"
+                    f"🚀 Début du cycle : <b>{cyc_start}</b>\n"
+                    f"📈 <b>{ret:+.1f}%</b> depuis le début\n"
                     f"🏁 Sommet du cycle : <b>{end_ev_str}</b>\n"
                     f"📅 Données au {last_date}"
                 )
@@ -242,9 +264,13 @@ def check_ticker(
             ev = _parse_ddmmyyyy(end_ev_str)
             n = _countdown_days(ev, today) if ev else None
             if n is not None and 1 <= n <= lookahead:
+                start_bar, ret = _current_zone_stats(cycles, prices, N, t_today, want_bull=False)
+                cyc_start = locked_start or date_of(start_bar).strftime("%d/%m/%Y")
                 messages.append(
                     f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
                     f"📈 Fin de l'alignement <b>BAISSIER</b> {_cd_label(n)}\n"
+                    f"🚀 Début du cycle : <b>{cyc_start}</b>\n"
+                    f"📊 <b>{ret:+.1f}%</b> depuis le début (short)\n"
                     f"🏁 Creux du cycle : <b>{end_ev_str}</b>\n"
                     f"📅 Données au {last_date}"
                 )
