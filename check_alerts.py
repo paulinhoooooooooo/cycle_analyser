@@ -14,9 +14,9 @@ from __future__ import annotations
 import math
 import os
 import sys
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import requests
@@ -34,12 +34,12 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 # ── Anti-doublon ────────────────────────────────────────────────────────────
-# On mémorise, par combinaison (ticker|cycles|direction), la DATE DES DONNÉES
-# (dernière bougie) pour laquelle on a déjà notifié. Tant que cette date
-# n'avance pas — typiquement le week-end/jours fériés pour une action, quand
-# aucune nouvelle bougie n'apparaît — on ne renvoie pas la même alerte.
-# Les cryptos (données 7j/7) ne sont jamais bloquées : leur date avance chaque
-# jour. Fichier recommité par le workflow (comme cycle_locks.json).
+# On mémorise, par combinaison (ticker|cycles|direction), le dernier JOUR
+# calendaire où on a notifié. Objectif : au plus une notification par jour et
+# par combinaison, pour éviter un double envoi si le workflow tourne deux fois
+# le même jour (cron + déclenchement manuel). Le compte à rebours étant
+# calendaire (J-3 → J-2 → J-1), il change chaque jour : les week-ends restent
+# donc bien notifiés. Fichier recommité par le workflow (comme cycle_locks.json).
 import json
 
 ALERT_STATE_FILE = Path("alert_state.json")
@@ -102,6 +102,28 @@ def _est_future_date(dates, bars_ahead: int):
     return last + timedelta(days=int(round(bars_ahead * avg_days)))
 
 
+def _parse_ddmmyyyy(s: str) -> Optional[date]:
+    """Parse une date affichée 'JJ/MM/AAAA' en date. None si non parsable
+    (ex. 'au-delà de l'horizon')."""
+    try:
+        return datetime.strptime(s.strip(), "%d/%m/%Y").date()
+    except (ValueError, AttributeError):
+        return None
+
+
+def _countdown_days(event: date, today: date) -> int:
+    """Nombre de JOURS CALENDAIRES d'aujourd'hui jusqu'à l'événement.
+    Compté en calendaire (et non en barres de trading) pour que le compte à
+    rebours descende chaque jour, week-ends et jours fériés compris."""
+    return (event - today).days
+
+
+def _cd_label(n: int) -> str:
+    """'dans 2 jours (J-2)' — libellé calendaire du compte à rebours."""
+    jour = "jour" if n == 1 else "jours"
+    return f"dans <b>{n} {jour}</b> (J-{n})"
+
+
 def _zone_end_offset(cycles: List[CycleInfo], t_last: float, start_off: int,
                      want_bull: bool, max_ahead: int = 1500):
     """À partir de la 1re barre de la zone (start_off barres après la dernière
@@ -129,13 +151,21 @@ def check_ticker(
     fige: str = None,
     locked_start: str = None,
     locked_end: str = None,
-) -> List[str]:
-    """Retourne la liste des messages d'alerte pour ce ticker.
+    today: Optional[date] = None,
+) -> Tuple[List[str], Optional[str]]:
+    """Retourne (messages, date_des_données) pour ce ticker.
     ``stats`` : ligne de backtest optionnelle (rendement/zones/réussite) ajoutée
     en pied de chaque alerte — purement informative.
     ``fige`` : date de référence (JJ/MM/AAAA). Si présente, les dates de début/fin
     du cycle sont FIGÉES (ne bougent plus jour après jour) ; seul le compte à
-    rebours J-3/J-2/J-1 décroît. Voir cycle_freeze.load_frozen."""
+    rebours J-3/J-2/J-1 décroît. Voir cycle_freeze.load_frozen.
+
+    Le compte à rebours est en JOURS CALENDAIRES d'aujourd'hui (``today``) jusqu'à
+    la date estimée de l'événement — pas en barres de trading. Il descend donc
+    chaque jour, week-ends et jours fériés compris (la date de l'événement est
+    stable même quand la bourse est fermée : aucune nouvelle donnée)."""
+    if today is None:
+        today = date.today()
     try:
         cycles, dates, prices, N, t_today, date_of, n_ref = load_frozen(
             ticker, periods, period, interval, start=start, fige=fige)
@@ -148,60 +178,76 @@ def check_ticker(
 
     messages: List[str] = []
 
-    # k va jusqu'à lookahead+1 : l'événement (pic/creux) est à la barre k-1, donc
-    # pour capter un événement « dans lookahead barres » il faut atteindre k=lookahead+1.
-    for k in range(1, lookahead + 2):
+    # On balaie un horizon de barres un peu plus large que lookahead : l'événement
+    # est daté (date_of), puis le compte à rebours est calculé en JOURS
+    # CALENDAIRES jusqu'à cette date, et filtré sur 1..lookahead jours. L'horizon
+    # élargi garantit qu'un événement « à J-lookahead » (jours) reste capté même
+    # quand une barre de trading couvre >1 jour calendaire (actions : ~1,4 j/barre).
+    periods_detail = " | ".join(f"{p}j" for p in periods)
+    d = (direction or "both").lower()
+    want_long = d in ("long", "both")
+    want_short = d in ("short", "both")
+
+    for k in range(1, lookahead + 6):
         bull_before, bear_before = _state_at(cycles, t_today + k - 1)
         bull_after, bear_after = _state_at(cycles, t_today + k)
-
         bars = max(1, k - 1)
-        if bars > lookahead:
-            continue
-        barre_word = "barre" if bars == 1 else "barres"
-        periods_detail = " | ".join(f"{p}j" for p in periods)
-        d = (direction or "both").lower()
-        want_long = d in ("long", "both")
-        want_short = d in ("short", "both")
 
         if want_long and not bull_before and bull_after:
             start_str = locked_start or date_of(t_today + bars).strftime("%d/%m/%Y")
-            end_off = _zone_end_offset(cycles, t_today, k, want_bull=True)
-            end_str = locked_end or (date_of(t_today + end_off).strftime("%d/%m/%Y")
-                                     if end_off is not None else "au-delà de l'horizon")
-            messages.append(
-                f"🟢 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
-                f"📈 Alignement <b>HAUSSIER</b> dans <b>{bars} {barre_word}</b>\n"
-                f"🚀 Début du cycle : <b>{start_str}</b>\n"
-                f"🏁 Fin du cycle : <b>{end_str}</b>\n"
-                f"📅 Données au {last_date}"
-            )
+            ev = _parse_ddmmyyyy(start_str)
+            n = _countdown_days(ev, today) if ev else None
+            if n is not None and 1 <= n <= lookahead:
+                end_off = _zone_end_offset(cycles, t_today, k, want_bull=True)
+                end_str = locked_end or (date_of(t_today + end_off).strftime("%d/%m/%Y")
+                                         if end_off is not None else "au-delà de l'horizon")
+                messages.append(
+                    f"🟢 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
+                    f"📈 Début alignement <b>HAUSSIER</b> {_cd_label(n)}\n"
+                    f"🚀 Début du cycle : <b>{start_str}</b>\n"
+                    f"🏁 Fin du cycle : <b>{end_str}</b>\n"
+                    f"📅 Données au {last_date}"
+                )
 
         if want_long and bull_before and not bull_after:
-            messages.append(
-                f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
-                f"📉 Fin de l'alignement <b>HAUSSIER</b> dans <b>{bars} {barre_word}</b>\n"
-                f"📅 Données au {last_date}"
-            )
+            end_ev_str = locked_end or date_of(t_today + bars).strftime("%d/%m/%Y")
+            ev = _parse_ddmmyyyy(end_ev_str)
+            n = _countdown_days(ev, today) if ev else None
+            if n is not None and 1 <= n <= lookahead:
+                messages.append(
+                    f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
+                    f"📉 Fin de l'alignement <b>HAUSSIER</b> {_cd_label(n)}\n"
+                    f"🏁 Sommet du cycle : <b>{end_ev_str}</b>\n"
+                    f"📅 Données au {last_date}"
+                )
 
         if want_short and not bear_before and bear_after:
             start_str = locked_start or date_of(t_today + bars).strftime("%d/%m/%Y")
-            end_off = _zone_end_offset(cycles, t_today, k, want_bull=False)
-            end_str = locked_end or (date_of(t_today + end_off).strftime("%d/%m/%Y")
-                                     if end_off is not None else "au-delà de l'horizon")
-            messages.append(
-                f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
-                f"📉 Alignement <b>BAISSIER</b> dans <b>{bars} {barre_word}</b>\n"
-                f"🚀 Début du cycle : <b>{start_str}</b>\n"
-                f"🏁 Fin du cycle : <b>{end_str}</b>\n"
-                f"📅 Données au {last_date}"
-            )
+            ev = _parse_ddmmyyyy(start_str)
+            n = _countdown_days(ev, today) if ev else None
+            if n is not None and 1 <= n <= lookahead:
+                end_off = _zone_end_offset(cycles, t_today, k, want_bull=False)
+                end_str = locked_end or (date_of(t_today + end_off).strftime("%d/%m/%Y")
+                                         if end_off is not None else "au-delà de l'horizon")
+                messages.append(
+                    f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
+                    f"📉 Début alignement <b>BAISSIER</b> {_cd_label(n)}\n"
+                    f"🚀 Début du cycle : <b>{start_str}</b>\n"
+                    f"🏁 Fin du cycle : <b>{end_str}</b>\n"
+                    f"📅 Données au {last_date}"
+                )
 
         if want_short and bear_before and not bear_after:
-            messages.append(
-                f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
-                f"📈 Fin de l'alignement <b>BAISSIER</b> dans <b>{bars} {barre_word}</b>\n"
-                f"📅 Données au {last_date}"
-            )
+            end_ev_str = locked_end or date_of(t_today + bars).strftime("%d/%m/%Y")
+            ev = _parse_ddmmyyyy(end_ev_str)
+            n = _countdown_days(ev, today) if ev else None
+            if n is not None and 1 <= n <= lookahead:
+                messages.append(
+                    f"🔴 <b>{ticker}</b>{rank_tag} — Cycles {periods_str}b ({periods_detail})\n"
+                    f"📈 Fin de l'alignement <b>BAISSIER</b> {_cd_label(n)}\n"
+                    f"🏁 Creux du cycle : <b>{end_ev_str}</b>\n"
+                    f"📅 Données au {last_date}"
+                )
 
     if stats:
         messages = [f"{m}\n{stats}" for m in messages]
@@ -245,7 +291,9 @@ def main() -> None:
     lookahead = int(config.get("lookaheadBars", 3))
     alerts_list = config.get("alerts", [])
     _locks = _cl.load()   # verrous J-15 (lecture seule)
-    _state = _load_alert_state()   # anti-doublon (date de données déjà notifiée)
+    _state = _load_alert_state()   # anti-doublon (dernier JOUR déjà notifié / combinaison)
+    _today = date.today()
+    _today_iso = _today.isoformat()
 
     print(f"Vérification de {len(alerts_list)} ticker(s) — J-{lookahead}…")
 
@@ -281,20 +329,22 @@ def main() -> None:
                                 start=start, rank_tag=rank_tag, direction=direction,
                                 stats=stats, fige=fige,
                                 locked_start=_cl.locked_start(_locks, _k),
-                                locked_end=_cl.locked_end(_locks, _k))
+                                locked_end=_cl.locked_end(_locks, _k),
+                                today=_today)
 
         if messages:
-            # Anti-doublon : si on a déjà notifié cette combinaison pour la même
-            # date de données (aucune nouvelle bougie depuis — ex. week-end), on
-            # n'envoie rien. Le compte à rebours ne bouge que quand une VRAIE
-            # nouvelle barre apparaît.
-            if _state.get(_k) == data_date:
-                print(f"déjà notifié (données au {data_date}) — ignoré")
+            # Anti-doublon : au plus UNE notification par jour et par combinaison.
+            # Le compte à rebours étant calendaire (J-3 → J-2 → J-1), il change de
+            # toute façon chaque jour ; ce garde-fou évite seulement un double envoi
+            # si le workflow tourne deux fois le même jour (cron + déclenchement
+            # manuel). Les week-ends restent notifiés (le J-N descend quand même).
+            if _state.get(_k) == _today_iso:
+                print(f"déjà notifié aujourd'hui ({_today_iso}) — ignoré")
             else:
                 for msg in messages:
                     send_telegram(msg)
                     total_sent += 1
-                _state[_k] = data_date
+                _state[_k] = _today_iso
                 print(f"{len(messages)} alerte(s) envoyée(s)")
         else:
             print("aucune alerte aujourd'hui")
