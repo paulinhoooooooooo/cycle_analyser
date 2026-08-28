@@ -95,7 +95,7 @@ def _annotate_future_transitions(
             bars = int(round(float(t_fut[i]))) - (N - 1)
             date_str = _future_date_str(dates, bars)
             y_pos = float(fut_osc[i]) + 0.22  # above the peak
-            ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=5.5,
+            ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=4.0,
                     ha="center", va="bottom", rotation=0,
                     zorder=6, clip_on=False, alpha=0.90)
             found_peak = True
@@ -104,7 +104,7 @@ def _annotate_future_transitions(
             bars = int(round(float(t_fut[i]))) - (N - 1)
             date_str = _future_date_str(dates, bars)
             y_pos = float(fut_osc[i]) - 0.22  # below the trough
-            ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=5.5,
+            ax.text(t_fut[i], y_pos, date_str, color=color, fontsize=4.0,
                     ha="center", va="top", rotation=0,
                     zorder=6, clip_on=False, alpha=0.90)
             found_trough = True
@@ -125,11 +125,11 @@ def _annotate_recent_transitions(ax, x, osc_norm, dates, color, n_each: int = 2)
             troughs.append(i)
     for i in peaks[-n_each:]:
         ax.text(x[i], float(osc_norm[i]) + 0.18, dates[int(i)].strftime("%d/%m/%Y"),
-                color=color, fontsize=5.0, ha="center", va="bottom",
+                color=color, fontsize=4.0, ha="center", va="bottom",
                 zorder=6, clip_on=True, alpha=0.85)
     for i in troughs[-n_each:]:
         ax.text(x[i], float(osc_norm[i]) - 0.18, dates[int(i)].strftime("%d/%m/%Y"),
-                color=color, fontsize=5.0, ha="center", va="top",
+                color=color, fontsize=4.0, ha="center", va="top",
                 zorder=6, clip_on=True, alpha=0.85)
 
 
@@ -269,7 +269,7 @@ def plot_single_cycle(
     cycle: CycleInfo,
     ticker: str = "",
 ) -> plt.Figure:
-    fig = plt.figure(figsize=(12, 6), facecolor=BG)
+    fig = plt.figure(figsize=(18, 6.5), facecolor=BG)
     gs = GridSpec(2, 1, figure=fig, height_ratios=[2.5, 1], hspace=0.08)
 
     ax_price = fig.add_subplot(gs[0])
@@ -462,7 +462,7 @@ def plot_combination(
     ticker: str = "",
 ) -> plt.Figure:
     n_cycles = len(combo.cycles)
-    fig = plt.figure(figsize=(14, 5 + 1.2 * n_cycles), facecolor=BG)
+    fig = plt.figure(figsize=(18, 5 + 1.2 * n_cycles), facecolor=BG)
     gs = GridSpec(1 + n_cycles, 1, figure=fig, height_ratios=[3] + [1] * n_cycles, hspace=0.08)
 
     ax_price = fig.add_subplot(gs[0])
