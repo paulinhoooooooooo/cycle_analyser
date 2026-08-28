@@ -363,10 +363,13 @@ def plot_single_cycle(
     _cur_date = dates[_cs].strftime("%d/%m/%Y")
     _cur_label = "Début cycle HAUSSIER" if _cur_bull else "Début cycle BAISSIER"
     _cur_color = GREEN if _cur_bull else RED
+    # Boîte placée à ~80 % de la hauteur (et non tout en haut) pour ne pas masquer
+    # l'étiquette de rendement de la zone en cours affichée en haut.
+    _y_box = ymin + (ymax - ymin) * 0.80
     ax_price.axvline(_cs, color=_cur_color, linewidth=1.2, linestyle=":", alpha=0.85, zorder=5)
     ax_price.annotate(
         f"{_cur_label}\n{_cur_date}",
-        xy=(_cs, y_top), xytext=(_cs + max(3, int(cycle.period * 0.05)), y_top),
+        xy=(_cs, _y_box), xytext=(_cs + max(3, int(cycle.period * 0.05)), _y_box),
         color=_cur_color, fontsize=6.5, fontweight="bold", ha="left", va="top", zorder=7,
         bbox=dict(boxstyle="round,pad=0.25", facecolor=PANEL, edgecolor=_cur_color, alpha=0.9),
     )
