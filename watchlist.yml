@@ -52,34 +52,34 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 134.0
+    rdt: 122.1
     zones: 9
-    reussite: 89
+    reussite: 100
   - ticker: MRNA            # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "98,133,48"
     start: 01/01/2022
     interval: 1d
     direction: long
 
-    rdt: 127.9
+    rdt: 118.5
     zones: 12
-    reussite: 75
+    reussite: 83
   - ticker: MRNA            # 🥈 #2 — combinaison secondaire en long
     cycles: "126,88"
     start: 01/01/2022
     interval: 1d
     direction: long
 
-    rdt: 168.5
+    rdt: 170.1
     zones: 12
-    reussite: 67
+    reussite: 75
   - ticker: KO
     cycles: "82,162"
     start: 01/01/2016
     interval: 1d
     direction: long
 
-    rdt: 96.6
+    rdt: 96.5
     zones: 17
     reussite: 88
   - ticker: MCHP
@@ -87,7 +87,7 @@ alerts:
     start: 01/01/2012
     interval: 1d
     direction: long
-    rdt: 363.4
+    rdt: 328.3
     zones: 31
     reussite: 77
 
@@ -97,7 +97,7 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 613.4
+    rdt: 615.0
     zones: 26
     reussite: 85
   - ticker: ASML
@@ -107,7 +107,7 @@ alerts:
     direction: long
 
 
-    rdt: 212.7
+    rdt: 190.5
     zones: 30
     reussite: 83
   - ticker: AMGN           # 🥇 #1 — ta combinaison la plus puissante en long
@@ -116,7 +116,7 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 240.4
+    rdt: 241.2
     zones: 19
     reussite: 90
   - ticker: AMGN            # 🥈 #2 — combinaison secondaire en long
@@ -125,7 +125,7 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 221.7
+    rdt: 220.8
     zones: 20
     reussite: 85
   - ticker: CAT
@@ -134,7 +134,7 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 291.4
+    rdt: 295.8
     zones: 15
     reussite: 87
   - ticker: ITW
@@ -143,49 +143,49 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 194.9
+    rdt: 189.4
     zones: 33
-    reussite: 85
+    reussite: 82
   - ticker: IYT
     cycles: "175"
     start: 01/01/2010
     interval: 1d
     direction: long
-    rdt: 222.4
-    zones: 24
-    reussite: 92
+    rdt: 222.2
+    zones: 25
+    reussite: 88
   - ticker: KR
     cycles: 129,172
     start: 01/01/2016
     interval: 1d
     direction: long
-    rdt: 187.8
-    zones: 21
+    rdt: 190.2
+    zones: 22
     reussite: 86
   - ticker: RIO
     cycles: 194,107
     start: 01/02/2016
     interval: 1d
     direction: long
-    rdt: 195.0
-    zones: 18
-    reussite: 94
+    rdt: 207.0
+    zones: 19
+    reussite: 90
   - ticker: RS
     cycles: 80,180
     start: 01/02/2016
     interval: 1d
     direction: long
-    rdt: 195.0
+    rdt: 206.3
     zones: 23
-    reussite: 96
+    reussite: 100
   - ticker: AEM
     cycles: 75,57
     start: 01/02/2016
     interval: 1d
     direction: long
-    rdt: 355.6
-    zones: 40
-    reussite: 88
+    rdt: 310.5
+    zones: 42
+    reussite: 79
   - ticker: BESI.AS
     cycles: 258,81
     start: 01/01/2012
@@ -199,7 +199,7 @@ alerts:
     start: 01/01/2012
     interval: 1d
     direction: long
-    rdt: 467.0
+    rdt: 466.7
     zones: 37
     reussite: 84
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
@@ -217,23 +217,23 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 597.2
+    rdt: 324.1
     zones: 17
-    reussite: 88
+    reussite: 71
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en short
     cycles: "1102,105,59"
     start: 10/04/2020
     interval: 1d
     direction: short
 
-    rdt: 337.5
+    rdt: 365.2
     zones: 15
-    reussite: 87
+    reussite: 93
   - ticker: ADA-USD
     cycles: "286,164,85"
     period: 5y
     interval: 1d
     direction: long
-    rdt: 358.8
+    rdt: 339.7
     zones: 10
-    reussite: 70
+    reussite: 60
