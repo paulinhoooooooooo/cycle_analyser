@@ -302,6 +302,7 @@ def plot_single_cycle(
 
     bull_zone_idx = 0
     bear_zone_idx = 0
+    bull_dur_total = 0   # somme des durées (barres) des zones haussières comptées
 
     i = 0
     while i < N:
@@ -323,6 +324,7 @@ def plot_single_cycle(
                               color=col, fontsize=5.0, ha="center", va="top",
                               zorder=5, rotation=90)
                 bull_zone_idx += 1
+                bull_dur_total += (last_idx - start + 1)
         else:
             start = i
             while i < N and not bullish[i]:
@@ -345,6 +347,11 @@ def plot_single_cycle(
 
     bull_compound = (bull_cmp - 1) * 100
     short_compound = (short_cmp - 1) * 100
+
+    # Durée moyenne RÉELLE des zones haussières observées (barres + jours calendaires)
+    _avg_bull_bars = (bull_dur_total / bull_zone_idx) if bull_zone_idx else 0.0
+    _days_per_bar = ((dates[-1] - dates[0]).days / max(N - 1, 1)) if N >= 2 else 1.0
+    _avg_bull_days = _avg_bull_bars * _days_per_bar
 
     # ── Repère du DÉBUT du cycle EN COURS (haussier ou baissier) ──────────────
     # Date OBSERVÉE (bord gauche de la zone actuelle), pas une projection : stable.
@@ -370,7 +377,8 @@ def plot_single_cycle(
         f"| Stabilité: {cycle.stability:.2f}  "
         f"| Réussite ↑ {cycle.hit_rate:.0f}% / Short {cycle.short_hit_rate:.0f}%  "
         f"| ↑ {bull_simple:+.1f}% (Σ) / {bull_compound:+.1f}% (composé)"
-        f"  | Short: {-bear_simple:+.1f}% (Σ) / {short_compound:+.1f}% (composé)",
+        f"  | Short: {-bear_simple:+.1f}% (Σ) / {short_compound:+.1f}% (composé)"
+        f"  | Durée ↑ moy: {_avg_bull_bars:.0f} barres (~{_avg_bull_days:.0f} j)",
         color=TEXT, fontsize=9, pad=6, loc="left",
     )
     ax_price.set_ylabel("Prix", fontsize=8.5)
@@ -491,6 +499,10 @@ def plot_combination(
                       zorder=5, rotation=90)
 
     periods_str = " + ".join(str(p) for p in combo.periods)
+    # Durée moyenne RÉELLE des zones haussières de la combinaison (barres + jours)
+    _avg_bull_bars = (sum(z.duration for z in combo.zones) / len(combo.zones)) if combo.zones else 0.0
+    _days_per_bar = ((dates[-1] - dates[0]).days / max(N - 1, 1)) if N >= 2 else 1.0
+    _avg_bull_days = _avg_bull_bars * _days_per_bar
     bear_str = (
         f"  |  Short: {-combo.bearish_total_return_pct:+.1f}% (Σ) / {combo.short_compound_return_pct:+.1f}% (composé)"
         f" · {combo.bearish_hit_rate:.0f}% réussite · {len(combo.bearish_zones)} zones"
@@ -499,6 +511,7 @@ def plot_combination(
         f"{ticker} — Cycles {periods_str}  "
         f"| ↑ {combo.total_return_pct:+.1f}% (Σ) / {combo.compound_return_pct:+.1f}% (composé)"
         f" · {combo.hit_rate:.0f}% réussite · {combo.n_zones} zones"
+        f" · Durée ↑ moy: {_avg_bull_bars:.0f} barres (~{_avg_bull_days:.0f} j)"
         f"{bear_str}",
         color=TEXT, fontsize=9, pad=6, loc="left",
     )
