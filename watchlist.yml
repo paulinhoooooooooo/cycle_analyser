@@ -186,6 +186,22 @@ alerts:
     rdt: 355.6
     zones: 40
     reussite: 88
+  - ticker: BESI.AS
+    cycles: 258,81
+    start: 01/01/2012
+    interval: 1d
+    direction: long
+    rdt: 529.0
+    zones: 29
+    reussite: 90
+  - ticker: IFX.DE
+    cycles: 103
+    start: 01/01/2012
+    interval: 1d
+    direction: long
+    rdt: 467.0
+    zones: 37
+    reussite: 84
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
     start: 10/04/2020
