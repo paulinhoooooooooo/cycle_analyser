@@ -321,6 +321,20 @@ def _backtest_note(entry: dict) -> str:
     return ("📊 Backtest : " + " · ".join(bits)) if bits else ""
 
 
+def _days_until(est, today: date):
+    """Jours CALENDAIRES d'aujourd'hui jusqu'à la date `est` (Timestamp/date).
+    None si `est` absent. Compté en calendaire pour coller aux notifications."""
+    if est is None:
+        return None
+    d = est.date() if hasattr(est, "date") else est
+    return (d - today).days
+
+
+def _jours(n) -> str:
+    """'1 jour' / 'N jours'."""
+    return f"{n} jour" if n == 1 else f"{n} jours"
+
+
 def build_digest(config: dict) -> str:
     """Récap trié par cycle HAUSSIER :
       1) d'abord les tickers EN cycle haussier, du plus PROCHE DE LA FIN au plus
@@ -333,6 +347,7 @@ def build_digest(config: dict) -> str:
         return "Aucun ticker dans watchlist.yml."
 
     _locks = _cl.load()   # verrous J-15 (lecture seule ici)
+    _today = date.today()
 
     # Rang par ticker (l'ordre dans le fichier fait le classement).
     counts: dict = {}
@@ -371,10 +386,11 @@ def build_digest(config: dict) -> str:
             bull_now, bars, est = st["bull_now"], st["bars"], st["est"]
             date_str = est.strftime("%d/%m/%Y") if est else "?"
             b = bars if bars is not None else BIG
+            _j = _days_until(est, _today)          # jours calendaires jusqu'à la transition
             if bull_now:
                 key = (0, b, i)    # EN hausse : le plus PROCHE DE LA FIN d'abord (moins de barres restantes)
-                line = (f"🟢 <b>EN cycle HAUSSIER</b> — encore <b>{bars} barres</b> (fin ~{date_str})"
-                        if bars is not None
+                line = (f"🟢 <b>EN cycle HAUSSIER</b> — encore <b>{_jours(_j)}</b> (fin ~{date_str})"
+                        if (bars is not None and _j is not None)
                         else "🟢 <b>EN cycle HAUSSIER</b> (fin au-delà de l'horizon)")
                 # Sous-ligne : depuis quand le cycle dure + rendement depuis le début
                 if st["start"] is not None:
@@ -383,14 +399,16 @@ def build_digest(config: dict) -> str:
                     line += f"\n  ▸ Début le {start_str} · <b>{ret:+.1f}%</b> depuis le début"
             else:
                 key = (1, b, i)    # pré-hausse : le plus proche du début d'abord
-                if bars is not None:
-                    line = f"🔜 Début HAUSSIER dans <b>{bars} barres</b> (~{date_str})"
+                if bars is not None and _j is not None:
+                    line = f"🔜 Début HAUSSIER dans <b>{_jours(_j)}</b> (~{date_str})"
                     # Sous-ligne : quand ce cycle haussier se terminera
                     if st["end_bars"] is not None:
+                        _je = _days_until(st["end_est"], _today)
                         end_str = st["end_est"].strftime("%d/%m/%Y") if st["end_est"] else "?"
-                        line += f"\n  ▸ Fin du cycle dans <b>{st['end_bars']} barres</b> (~{end_str})"
+                        _fin = _jours(_je) if _je is not None else f"{st['end_bars']} barres"
+                        line += f"\n  ▸ Fin du cycle dans <b>{_fin}</b> (~{end_str})"
                 else:
-                    line = f"⚪ Pas de début haussier dans les {MAX_LOOKAHEAD} prochaines barres"
+                    line = "⚪ Pas de début haussier à l'horizon d'analyse"
         rows.append((key, header, line))
 
     rows.sort(key=lambda r: r[0])
