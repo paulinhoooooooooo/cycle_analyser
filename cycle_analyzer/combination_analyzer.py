@@ -545,6 +545,7 @@ def analyze_combinations(
     min_zones: int = None,
     min_return: float = None,
     max_period: int = None,
+    both_sides: bool = False,
 ) -> Dict:
     """
     Returns combinations grouped by size, with separate long and short rankings:
@@ -633,9 +634,14 @@ def analyze_combinations(
             return False
         return True
 
+    # --bilateral : une combinaison n'est retenue que si elle passe les seuils
+    # (zone/rendement/réussite) EN LONG *ET* EN SHORT à la fois.
+    _keep_l = (lambda c: _keep_long(c) and _keep_short(c)) if both_sides else _keep_long
+    _keep_s = (lambda c: _keep_long(c) and _keep_short(c)) if both_sides else _keep_short
+
     if min_zones or min_return is not None:
-        valid_long = [c for c in all_valid if _keep_long(c)]
-        valid_short = [c for c in all_valid if _keep_short(c)]
+        valid_long = [c for c in all_valid if _keep_l(c)]
+        valid_short = [c for c in all_valid if _keep_s(c)]
     else:
         valid_long = valid_short = all_valid
 
@@ -647,6 +653,10 @@ def analyze_combinations(
 
     _hit_l = lambda c: c.hit_rate
     _hit_s = lambda c: c.bearish_hit_rate
+    # --bilateral : la porte de réussite exige le seuil dans les DEUX sens
+    # (on gate sur le MINIMUM des deux réussites long/short).
+    _hit_gate_l = (lambda c: min(c.hit_rate, c.bearish_hit_rate)) if both_sides else _hit_l
+    _hit_gate_s = (lambda c: min(c.hit_rate, c.bearish_hit_rate)) if both_sides else _hit_s
 
     # ── MODE FILTRE ────────────────────────────────────────────────────────────
     # Quand l'utilisateur restreint EXPLICITEMENT le champ (--rendement / --reussite
@@ -686,22 +696,22 @@ def analyze_combinations(
             cr = _build_combo(prices, [c], mask_cache)
             if cr is not None:
                 singles_all.append(cr)
-        singles_long = [c for c in singles_all if _keep_long(c)]
-        singles_short = [c for c in singles_all if _keep_short(c)]
+        singles_long = [c for c in singles_all if _keep_l(c)]
+        singles_short = [c for c in singles_all if _keep_s(c)]
 
         # Au plus 5 combinaisons par catégorie : les 5 MEILLEURES en rendement.
         # (_all_passing est déjà trié par rendement décroissant, _best_variants
         # conserve cet ordre → [:_FILTER_MAX] = les 5 meilleures.)
         _FILTER_MAX = 5
-        results[1] = _best_variants(_all_passing(singles_long, _qual, _hit_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
-        results[2] = _best_variants(_all_passing(pairs, _qual, _hit_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
-        results[3] = _best_variants(_all_passing(triples, _qual, _hit_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
+        results[1] = _best_variants(_all_passing(singles_long, _qual, _hit_gate_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
+        results[2] = _best_variants(_all_passing(pairs, _qual, _hit_gate_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
+        results[3] = _best_variants(_all_passing(triples, _qual, _hit_gate_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
         # "court" est un simple re-découpage des paires/triples → redondant quand on
         # montre déjà TOUT ; on le vide pour éviter les doublons dans le récap.
         results["court"] = []
-        results["short_1"] = _best_variants(_all_passing(singles_short, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
-        results["short_2"] = _best_variants(_all_passing(pairs_s, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
-        results["short_3"] = _best_variants(_all_passing(triples_s, _qual_short, _hit_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
+        results["short_1"] = _best_variants(_all_passing(singles_short, _qual_short, _hit_gate_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
+        results["short_2"] = _best_variants(_all_passing(pairs_s, _qual_short, _hit_gate_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
+        results["short_3"] = _best_variants(_all_passing(triples_s, _qual_short, _hit_gate_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
         # Le résumé « TOP 3 MEILLEURES COMBINAISONS » ne montre QUE des combinaisons
         # (2-3 cycles), jamais un cycle unique — results[1] est volontairement exclu.
         results["diverse"] = pick_diverse(results[2] + results[3],

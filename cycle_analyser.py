@@ -240,6 +240,11 @@ Exemples :
                         help="Rendement MINIMUM (%%) par combinaison (ex: --rendement 200). "
                              "N'affiche que les combinaisons dont le rendement total est >= MIN%%. "
                              "Long: rendement haussier, Short: gain du short.")
+    parser.add_argument("--bilateral", action="store_true",
+                        help="DEUX SENS : n'affiche que les combinaisons qui respectent les "
+                             "filtres actifs (--reussite / --rendement / --zone) À LA FOIS en "
+                             "LONG et en SHORT. Ex: --reussite 80 --bilateral => 80%% de réussite "
+                             "en hausse ET 80%% en baisse. (À combiner avec au moins un filtre.)")
     parser.add_argument("--court", nargs="?", type=int, const=200, default=None, metavar="JOURS",
                         help="Ne garder que les combinaisons dont TOUS les cycles font moins de "
                              "JOURS barres (défaut 200 si aucune valeur). "
@@ -585,7 +590,7 @@ Exemples :
         combinations = analyze_combinations(prices, cycles, top_n_per_size=3,
                                             recency_halflife=_recency, min_hit=_min_hit,
                                             min_zones=args.zone, min_return=args.rendement,
-                                            max_period=args.court)
+                                            max_period=args.court, both_sides=args.bilateral)
         n_found = sum(len(v) for v in combinations.values())
         progress.update(t3, description=f"[green]✓[/green] {n_found} meilleures combinaisons trouvées")
         progress.stop_task(t3)
@@ -600,6 +605,8 @@ Exemples :
             _opts.append(f"≥ {args.zone} zones (--zone)")
         if args.rendement is not None:
             _opts.append(f"Rendement ≥ {args.rendement:.0f}% (--rendement)")
+        if args.bilateral:
+            _opts.append("Deux sens : seuils exigés en LONG ET en SHORT (--bilateral)")
         if args.court is not None:
             _opts.append(f"Cycles < {args.court} jours (--court)")
         html = generate_report(
