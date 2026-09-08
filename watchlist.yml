@@ -202,6 +202,16 @@ alerts:
     rdt: 466.7
     zones: 37
     reussite: 84
+  - ticker: DRO.AX          # 🥇 #1
+    cycles: 375,307,69
+    start: 01/01/2017
+    interval: 1d
+    direction: long
+  - ticker: DRO.AX          # 🥈 #2
+    cycles: 375,308
+    start: 01/01/2017
+    interval: 1d
+    direction: long
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
     start: 10/04/2020
