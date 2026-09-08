@@ -52,7 +52,7 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 122.1
+    rdt: 117.3
     zones: 9
     reussite: 100
   - ticker: MRNA            # 🥇 #1 — ta combinaison la plus puissante en long
@@ -61,18 +61,18 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 118.5
-    zones: 12
-    reussite: 83
+    rdt: 57.9
+    zones: 7
+    reussite: 43
   - ticker: MRNA            # 🥈 #2 — combinaison secondaire en long
     cycles: "126,88"
     start: 01/01/2022
     interval: 1d
     direction: long
 
-    rdt: 170.1
-    zones: 12
-    reussite: 75
+    rdt: 150.9
+    zones: 11
+    reussite: 64
   - ticker: KO
     cycles: "82,162"
     start: 01/01/2016
@@ -87,9 +87,9 @@ alerts:
     start: 01/01/2012
     interval: 1d
     direction: long
-    rdt: 328.3
+    rdt: 305.6
     zones: 31
-    reussite: 77
+    reussite: 81
 
   - ticker: UI
     cycles: "147"
@@ -97,7 +97,7 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 615.0
+    rdt: 611.9
     zones: 26
     reussite: 85
   - ticker: ASML
@@ -107,7 +107,7 @@ alerts:
     direction: long
 
 
-    rdt: 190.5
+    rdt: 177.2
     zones: 30
     reussite: 83
   - ticker: AMGN           # 🥇 #1 — ta combinaison la plus puissante en long
@@ -116,7 +116,7 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 241.2
+    rdt: 253.6
     zones: 19
     reussite: 90
   - ticker: AMGN            # 🥈 #2 — combinaison secondaire en long
@@ -134,7 +134,7 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 295.8
+    rdt: 281.2
     zones: 15
     reussite: 87
   - ticker: ITW
@@ -143,7 +143,7 @@ alerts:
     interval: 1d
     direction: long
 
-    rdt: 189.4
+    rdt: 194.7
     zones: 33
     reussite: 82
   - ticker: IYT
@@ -151,7 +151,7 @@ alerts:
     start: 01/01/2010
     interval: 1d
     direction: long
-    rdt: 222.2
+    rdt: 219.0
     zones: 25
     reussite: 88
   - ticker: KR
@@ -159,7 +159,7 @@ alerts:
     start: 01/01/2016
     interval: 1d
     direction: long
-    rdt: 190.2
+    rdt: 186.6
     zones: 22
     reussite: 86
   - ticker: RIO
@@ -167,9 +167,9 @@ alerts:
     start: 01/02/2016
     interval: 1d
     direction: long
-    rdt: 207.0
-    zones: 19
-    reussite: 90
+    rdt: 172.1
+    zones: 18
+    reussite: 83
   - ticker: RS
     cycles: 80,180
     start: 01/02/2016
@@ -183,23 +183,23 @@ alerts:
     start: 01/02/2016
     interval: 1d
     direction: long
-    rdt: 310.5
-    zones: 42
-    reussite: 79
+    rdt: 272.7
+    zones: 40
+    reussite: 78
   - ticker: BESI.AS
     cycles: 258,81
     start: 01/01/2012
     interval: 1d
     direction: long
-    rdt: 529.0
+    rdt: 526.0
     zones: 29
-    reussite: 90
+    reussite: 86
   - ticker: IFX.DE
     cycles: 103
     start: 01/01/2012
     interval: 1d
     direction: long
-    rdt: 466.7
+    rdt: 468.5
     zones: 37
     reussite: 84
   - ticker: DRO.AX          # 🥇 #1
@@ -207,36 +207,42 @@ alerts:
     start: 01/01/2017
     interval: 1d
     direction: long
+    rdt: 575.3
+    zones: 14
+    reussite: 86
   - ticker: DRO.AX          # 🥈 #2
     cycles: 375,308
     start: 01/01/2017
     interval: 1d
     direction: long
+    rdt: 1211.5
+    zones: 7
+    reussite: 86
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en long
     cycles: "1106,174"
     start: 10/04/2020
     interval: 1d
     direction: long
 
-    rdt: 1554.3
-    zones: 8
-    reussite: 75
+    rdt: 1562.4
+    zones: 9
+    reussite: 67
   - ticker: SOL-USD          # 🥈 #2 — combinaison secondaire en long
     cycles: "176,90,45"
     start: 10/04/2020
     interval: 1d
     direction: long
 
-    rdt: 324.1
-    zones: 17
-    reussite: 71
+    rdt: 560.7
+    zones: 18
+    reussite: 67
   - ticker: SOL-USD          # 🥇 #1 — ta combinaison la plus puissante en short
     cycles: "1102,105,59"
     start: 10/04/2020
     interval: 1d
     direction: short
 
-    rdt: 365.2
+    rdt: 357.4
     zones: 15
     reussite: 93
   - ticker: ADA-USD
@@ -244,6 +250,6 @@ alerts:
     period: 5y
     interval: 1d
     direction: long
-    rdt: 339.7
+    rdt: 326.3
     zones: 10
     reussite: 60
