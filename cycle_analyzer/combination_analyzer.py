@@ -6,7 +6,10 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
-from .cycle_detector import CycleInfo, get_bullish_mask, _detrend_log, _fit_sine, _phase_state
+from .cycle_detector import (
+    CycleInfo, get_bullish_mask, _detrend_log, _fit_sine, _phase_state,
+    build_asym_pool,
+)
 
 
 @dataclass
@@ -81,6 +84,10 @@ def _compute_zones(prices: np.ndarray, mask: np.ndarray) -> List[ZoneResult]:
 def _bull_mask_for(prices: np.ndarray, c: CycleInfo, masks: dict = None) -> np.ndarray:
     """Masque haussier d'un cycle, avec cache optionnel {period: mask} pour éviter
     de recalculer la sinusoïde du même cycle dans chaque combinaison."""
+    # Cycle ASYMÉTRIQUE : masque explicite déjà calculé → on l'utilise tel quel
+    # (jamais le masque sinusoïdal, et pas de cache par période — collision possible).
+    if getattr(c, "bull_mask", None) is not None:
+        return c.bull_mask
     if masks is not None:
         m = masks.get(c.period)
         if m is None:
@@ -546,6 +553,7 @@ def analyze_combinations(
     min_return: float = None,
     max_period: int = None,
     both_sides: bool = False,
+    asym: bool = False,
 ) -> Dict:
     """
     Returns combinations grouped by size, with separate long and short rankings:
@@ -584,6 +592,16 @@ def analyze_combinations(
     if max_period is not None:
         pool = [c for c in pool if c.period < max_period]
 
+    # --asym : ajoute au pool des cycles ASYMÉTRIQUES (durées hausse/baisse
+    # différentes) pour les mêmes périodes candidates. Ils portent un masque
+    # explicite et coexistent avec les cycles symétriques (le meilleur des deux
+    # ressort). Ajout borné pour ne pas faire exploser la combinatoire.
+    if asym:
+        _asym_periods = [c.period for c in pool]
+        if max_period is not None:
+            _asym_periods = [p for p in _asym_periods if p < max_period]
+        pool = pool + build_asym_pool(prices, _asym_periods, max_add=14)
+
     results: Dict = {2: [], 3: [], "short_2": [], "short_3": [], "court": []}
 
     def _qual(r):
@@ -594,7 +612,9 @@ def analyze_combinations(
 
     # Cache des masques haussiers : chaque cycle du pool n'est calculé qu'UNE fois
     # (au lieu d'une fois par combinaison où il apparaît) → énorme gain de temps.
-    mask_cache: dict = {c.period: get_bullish_mask(prices, c.period) for c in pool}
+    # (les cycles asymétriques ont leur propre masque → exclus du cache par période)
+    mask_cache: dict = {c.period: get_bullish_mask(prices, c.period)
+                        for c in pool if getattr(c, "bull_mask", None) is None}
 
     # Construit toutes les combinaisons valides (paires ET triples ensemble)
     all_valid: List[CombinationResult] = []

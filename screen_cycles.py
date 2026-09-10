@@ -41,20 +41,33 @@ SEUIL_INTER      = 80.0   # rdt d'une combo fiable ≥ 80 %  → ⭐
 
 MAX_PAR_TICKER = 4        # nombre max de combos affichées par entreprise
 
+# --asym via variable d'environnement (ASYM=oui) : cherche aussi des cycles
+# asymétriques (durées hausse/baisse différentes).
+ASYM = os.environ.get("ASYM", "non").strip().lower() in ("oui", "yes", "true", "1")
+
+
+def _combo_label(cr):
+    """Libellé des cycles d'une combo : '160↑120/↓40+90' (↑U/↓D pour les asym.)."""
+    parts = []
+    for c in cr.cycles:
+        a = getattr(c, "asym", None)
+        parts.append(f"{c.period}↑{a[0]}/↓{a[1]}" if a else str(c.period))
+    return "+".join(parts)
+
 
 def _best_combos(prices):
-    """Retourne la liste des combos LONG (tailles 1,2,3) avec (periods, rdt, zones, hit)."""
+    """Retourne la liste des combos LONG (tailles 1,2,3) : (periods, rdt, zones, hit, label)."""
     cycles = detect_cycles(prices, min_period=15, max_period=min(300, len(prices) // 3))
     if not cycles:
         return []
-    res = analyze_combinations(prices, cycles, top_n_per_size=5)
+    res = analyze_combinations(prices, cycles, top_n_per_size=5, asym=ASYM)
     out = []
     for size in (1, 2, 3):
         for cr in res.get(size, []) or []:
             if cr is None:
                 continue
             out.append((list(cr.periods), float(cr.total_return_pct),
-                        int(cr.n_zones), float(cr.hit_rate)))
+                        int(cr.n_zones), float(cr.hit_rate), _combo_label(cr)))
     return out
 
 
@@ -158,7 +171,7 @@ def main():
         rows.append((r["rank"], tk, r["verdict"], r["combos"]))
         print(f"  {r['verdict']:34} {tk}")
         for b in r["combos"]:
-            print(f"       {'+'.join(map(str,b[0]))}b · Rdt {b[1]:+.0f}% · {b[2]} zones · {b[3]:.0f}%")
+            print(f"       {b[4]}b · Rdt {b[1]:+.0f}% · {b[2]} zones · {b[3]:.0f}%")
 
     # Classement : meilleur verdict d'abord, puis meilleur rdt de la 1re combo
     rows.sort(key=lambda x: (x[0], -(x[3][0][1] if x[3] else -1e9)))
@@ -168,14 +181,14 @@ def main():
     tous = []
     for rank, tk, verdict, combos in rows:
         for b in combos:
-            tous.append((b[1], tk, b[0], b[2], b[3]))   # (rdt, ticker, periods, zones, hit)
+            tous.append((b[1], tk, b[4], b[2], b[3]))   # (rdt, ticker, label, zones, hit)
     tous.sort(key=lambda x: -x[0])
     top5 = tous[:5]
 
     print("\n" + "=" * 60)
     print("🏆 TOP 5 DES MEILLEURS CYCLES (toutes entreprises)")
-    for i, (rdt, tk, periods, zones, hit) in enumerate(top5, 1):
-        print(f"  {i}. {tk:12} {'+'.join(map(str,periods))}b · Rdt {rdt:+.0f}% · {zones} zones · {hit:.0f}%")
+    for i, (rdt, tk, label, zones, hit) in enumerate(top5, 1):
+        print(f"  {i}. {tk:12} {label}b · Rdt {rdt:+.0f}% · {zones} zones · {hit:.0f}%")
 
     lines = [f"<b>🔎 Screener de cycles</b> — {len(tickers)} valeur(s) · {fenetre}",
              f"Critère « fiable » : ≥ {MIN_ZONES_FIABLE} zones et ≥ {MIN_HIT_FIABLE:.0f}% réussite\n"]
@@ -186,13 +199,12 @@ def main():
             lines.append("")  # séparation entre groupes
         lines.append(f"{verdict} <b>{tk}</b>")
         for b in combos:
-            periods = "+".join(map(str, b[0]))
-            lines.append(f"   ▸ {periods}b · Rdt {b[1]:+.0f}% · {b[2]} zones · réussite {b[3]:.0f}%")
+            lines.append(f"   ▸ {b[4]}b · Rdt {b[1]:+.0f}% · {b[2]} zones · réussite {b[3]:.0f}%")
 
     if top5:
         lines.append("\n<b>🏆 TOP 5 des meilleurs cycles</b>")
-        for i, (rdt, tk, periods, zones, hit) in enumerate(top5, 1):
-            lines.append(f"   {i}. <b>{tk}</b> {'+'.join(map(str,periods))}b · "
+        for i, (rdt, tk, label, zones, hit) in enumerate(top5, 1):
+            lines.append(f"   {i}. <b>{tk}</b> {label}b · "
                          f"Rdt {rdt:+.0f}% · {zones} zones · {hit:.0f}%")
 
     lines.append(f"\n<i>Plusieurs ▸ = plusieurs cycles intéressants pour la valeur. "

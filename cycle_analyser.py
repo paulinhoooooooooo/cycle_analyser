@@ -245,6 +245,11 @@ Exemples :
                              "filtres actifs (--reussite / --rendement / --zone) À LA FOIS en "
                              "LONG et en SHORT. Ex: --reussite 80 --bilateral => 80%% de réussite "
                              "en hausse ET 80%% en baisse. (À combiner avec au moins un filtre.)")
+    parser.add_argument("--asym", action="store_true",
+                        help="Cherche AUSSI des cycles ASYMÉTRIQUES : durées de hausse et de "
+                             "baisse DIFFÉRENTES (ex: 120 barres ↑ puis 40 ↓), au lieu du seul "
+                             "50/50 des sinusoïdes. Permet de capter des rythmes type Bitcoin "
+                             "(longue hausse / courte baisse). Notés '↑U/↓D' dans les cycles.")
     parser.add_argument("--court", nargs="?", type=int, const=200, default=None, metavar="JOURS",
                         help="Ne garder que les combinaisons dont TOUS les cycles font moins de "
                              "JOURS barres (défaut 200 si aucune valeur). "
@@ -590,7 +595,8 @@ Exemples :
         combinations = analyze_combinations(prices, cycles, top_n_per_size=3,
                                             recency_halflife=_recency, min_hit=_min_hit,
                                             min_zones=args.zone, min_return=args.rendement,
-                                            max_period=args.court, both_sides=args.bilateral)
+                                            max_period=args.court, both_sides=args.bilateral,
+                                            asym=args.asym)
         n_found = sum(len(v) for v in combinations.values())
         progress.update(t3, description=f"[green]✓[/green] {n_found} meilleures combinaisons trouvées")
         progress.stop_task(t3)
@@ -607,6 +613,8 @@ Exemples :
             _opts.append(f"Rendement ≥ {args.rendement:.0f}% (--rendement)")
         if args.bilateral:
             _opts.append("Deux sens : seuils exigés en LONG ET en SHORT (--bilateral)")
+        if args.asym:
+            _opts.append("Cycles asymétriques activés (--asym)")
         if args.court is not None:
             _opts.append(f"Cycles < {args.court} jours (--court)")
         html = generate_report(

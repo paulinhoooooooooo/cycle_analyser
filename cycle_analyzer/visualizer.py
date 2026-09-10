@@ -283,9 +283,16 @@ def plot_single_cycle(
 
     ax_price.plot(x, prices, color="#58a6ff", linewidth=1.2, zorder=2)
 
-    osc = get_oscillator_series(prices, cycle.period)
-    amp = cycle.amplitude_log
-    bullish = get_bullish_mask(prices, cycle.period)
+    _is_asym = getattr(cycle, "asym", None) is not None and getattr(cycle, "bull_mask", None) is not None
+    if _is_asym:
+        # Cycle ASYMÉTRIQUE : masque explicite, oscillateur = créneau ±1.
+        bullish = cycle.bull_mask
+        osc = np.where(bullish, 1.0, -1.0)
+        amp = 1.0
+    else:
+        osc = get_oscillator_series(prices, cycle.period)
+        amp = cycle.amplitude_log
+        bullish = get_bullish_mask(prices, cycle.period)
 
     # Set ylim before annotating so text positions are correct
     ymax = prices.max() * 1.02
@@ -374,8 +381,10 @@ def plot_single_cycle(
         bbox=dict(boxstyle="round,pad=0.25", facecolor=PANEL, edgecolor=_cur_color, alpha=0.9),
     )
 
+    _cyc_lab = (f"{cycle.period}b ↑{cycle.asym[0]}/↓{cycle.asym[1]}" if _is_asym
+                else f"{cycle.period} barres")
     ax_price.set_title(
-        f"{ticker} — Cycle {cycle.period} barres  "
+        f"{ticker} — Cycle {_cyc_lab}  "
         f"| Amp: {cycle.amplitude:,.2f}  | Force: {cycle.strength:.2f}  "
         f"| Stabilité: {cycle.stability:.2f}  "
         f"| Réussite ↑ {cycle.hit_rate:.0f}% / Short {cycle.short_hit_rate:.0f}%  "
@@ -392,7 +401,8 @@ def plot_single_cycle(
     osc_norm = osc / (amp + 1e-10)
     ax_osc.plot(x, osc_norm, color=BLUE, linewidth=1.5, zorder=3, label=f"Oscillateur {cycle.period}")
     # Dates des 2 derniers creux/pics PASSÉS (en plus des futurs).
-    _annotate_recent_transitions(ax_osc, x, osc_norm, dates, BLUE)
+    if not _is_asym:
+        _annotate_recent_transitions(ax_osc, x, osc_norm, dates, BLUE)
     ax_osc.axhline(0, color=GRID, linewidth=1, zorder=2)
     ax_osc.axhline(1, color=GREEN, linewidth=0.7, linestyle="--", alpha=0.5, zorder=2)
     ax_osc.axhline(-1, color=RED, linewidth=0.7, linestyle="--", alpha=0.5, zorder=2)
@@ -402,6 +412,15 @@ def plot_single_cycle(
 
     # Date ticks
     _set_date_ticks(ax_osc, dates, N)
+
+    if _is_asym:
+        # Cycle asymétrique : pas de projection future sinusoïdale (motif non
+        # sinusoïdal). On finalise le graphique ici.
+        import warnings as _w
+        with _w.catch_warnings():
+            _w.simplefilter("ignore")
+            fig.tight_layout()
+        return fig
 
     # ── Next reversal vertical marker ─────────────────────────────────────────
     # Coefficients ré-ajustés à la période entière : la projection et ses dates
@@ -501,7 +520,11 @@ def plot_combination(
                       color=col, fontsize=6.0, ha="center", va="bottom",
                       zorder=5, rotation=90)
 
-    periods_str = " + ".join(str(p) for p in combo.periods)
+    periods_str = " + ".join(
+        (f"{c.period}↑{c.asym[0]}/↓{c.asym[1]}" if getattr(c, "asym", None) else str(c.period))
+        for c in combo.cycles
+    )
+    _has_asym = any(getattr(c, "asym", None) for c in combo.cycles)
     # Durée moyenne RÉELLE des zones haussières de la combinaison (barres + jours)
     _avg_bull_bars = (sum(z.duration for z in combo.zones) / len(combo.zones)) if combo.zones else 0.0
     _days_per_bar = ((dates[-1] - dates[0]).days / max(N - 1, 1)) if N >= 2 else 1.0
@@ -528,20 +551,30 @@ def plot_combination(
         ax.set_facecolor(PANEL)
         col = CYCLE_COLORS[ci % len(CYCLE_COLORS)]
 
-        osc = get_oscillator_series(prices, cycle.period)
-        osc_norm = osc / (cycle.amplitude_log + 1e-10)
-
-        ax.plot(x, osc_norm, color=col, linewidth=1.5, zorder=3)
+        _cyc_asym = getattr(cycle, "asym", None)
+        if _cyc_asym is not None and getattr(cycle, "bull_mask", None) is not None:
+            # Cycle ASYMÉTRIQUE : oscillateur = créneau (+1 pendant la hausse,
+            # -1 pendant la baisse), pas une sinusoïde.
+            bull = cycle.bull_mask
+            osc_norm = np.where(bull, 1.0, -1.0)
+            ax.step(x, osc_norm, color=col, linewidth=1.4, where="mid", zorder=3)
+        else:
+            osc = get_oscillator_series(prices, cycle.period)
+            osc_norm = osc / (cycle.amplitude_log + 1e-10)
+            ax.plot(x, osc_norm, color=col, linewidth=1.5, zorder=3)
+            bull = get_bullish_mask(prices, cycle.period)
         ax.axhline(0, color=GRID, linewidth=1, zorder=2)
 
-        bull = get_bullish_mask(prices, cycle.period)
         ax.fill_between(x, osc_norm, 0, where=bull, color=GREEN, alpha=0.25, zorder=1)
         ax.fill_between(x, osc_norm, 0, where=~bull, color=RED, alpha=0.20, zorder=1)
         # Dates des 2 derniers creux/pics PASSÉS (en plus des futurs).
-        _annotate_recent_transitions(ax, x, osc_norm, dates, col)
+        if _cyc_asym is None:
+            _annotate_recent_transitions(ax, x, osc_norm, dates, col)
         ax.set_ylim(-1.55, 1.55)
 
-        ax.set_ylabel(f"{cycle.period}b", fontsize=8, color=col)
+        _ylab = (f"{cycle.period}b ↑{_cyc_asym[0]}/↓{_cyc_asym[1]}" if _cyc_asym
+                 else f"{cycle.period}b")
+        ax.set_ylabel(_ylab, fontsize=7.5, color=col)
         ax.grid(True, color=GRID, linewidth=0.4)
 
         if ci < n_cycles - 1:
@@ -553,36 +586,39 @@ def plot_combination(
     # Cycles avec coefficients ré-ajustés à la période entière : les marqueurs
     # d'alignement et les projections prolongent exactement les courbes pleines
     # (et coïncident avec les dates du bot Telegram).
-    cycles_int = []
-    for c in combo.cycles:
-        A_i, B_i = _int_period_coeffs(prices, c.period)
-        cycles_int.append(_dc_replace(c, coeff_a=A_i, coeff_b=B_i))
-    next_bull, next_bear = _next_combo_alignments(cycles_int, N)
+    # Les projections futures sont SINUSOÏDALES : on les DÉSACTIVE si la combo
+    # contient un cycle ASYMÉTRIQUE (le motif n'est pas une sinusoïde).
+    if not _has_asym:
+        cycles_int = []
+        for c in combo.cycles:
+            A_i, B_i = _int_period_coeffs(prices, c.period)
+            cycles_int.append(_dc_replace(c, coeff_a=A_i, coeff_b=B_i))
+        next_bull, next_bear = _next_combo_alignments(cycles_int, N)
 
-    x_max_extra = max(v for v in [next_bull, next_bear, 1] if v is not None)
-    pad_combo = max(10, int(x_max_extra * 0.12))
-    new_xlim = (0, N - 1 + x_max_extra + pad_combo)
-    ax_price.set_xlim(*new_xlim)
-    for ci in range(n_cycles):
-        fig.axes[1 + ci].set_xlim(*new_xlim)
+        x_max_extra = max(v for v in [next_bull, next_bear, 1] if v is not None)
+        pad_combo = max(10, int(x_max_extra * 0.12))
+        new_xlim = (0, N - 1 + x_max_extra + pad_combo)
+        ax_price.set_xlim(*new_xlim)
+        for ci in range(n_cycles):
+            fig.axes[1 + ci].set_xlim(*new_xlim)
 
-    def _add_combo_marker(ax_p, bars, col, label_txt, y_frac):
-        if bars is None:
-            return
-        xv = N - 1 + bars
-        date_s = _future_date_str(dates, bars)
-        ax_p.axvline(xv, color=col, linewidth=1.4, linestyle="--", alpha=0.85, zorder=5)
-        y_pos = ymin + (ymax - ymin) * y_frac
-        ax_p.text(
-            xv + pad_combo * 0.15, y_pos,
-            f"{label_txt}\n{date_s}\n(dans {bars}b)",
-            color=col, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
-            bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL,
-                      edgecolor=col, alpha=0.85),
-        )
+        def _add_combo_marker(ax_p, bars, col, label_txt, y_frac):
+            if bars is None:
+                return
+            xv = N - 1 + bars
+            date_s = _future_date_str(dates, bars)
+            ax_p.axvline(xv, color=col, linewidth=1.4, linestyle="--", alpha=0.85, zorder=5)
+            y_pos = ymin + (ymax - ymin) * y_frac
+            ax_p.text(
+                xv + pad_combo * 0.15, y_pos,
+                f"{label_txt}\n{date_s}\n(dans {bars}b)",
+                color=col, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL,
+                          edgecolor=col, alpha=0.85),
+            )
 
-    _add_combo_marker(ax_price, next_bull, GREEN, "↑ Alignement\nhaussier", 0.72)
-    _add_combo_marker(ax_price, next_bear, RED,   "↓ Alignement\nbaissier", 0.28)
+        _add_combo_marker(ax_price, next_bull, GREEN, "↑ Alignement\nhaussier", 0.72)
+        _add_combo_marker(ax_price, next_bear, RED,   "↓ Alignement\nbaissier", 0.28)
 
     # ── Dashed future extension for each individual oscillator ────────────────
     # Mêmes coefficients (période entière) que les courbes pleines → continuité.

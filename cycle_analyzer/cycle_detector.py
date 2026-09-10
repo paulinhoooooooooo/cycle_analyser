@@ -25,6 +25,13 @@ class CycleInfo:
     rank: int = 0
     hit_rate: float = 0.0        # % bullish zones where price went up
     short_hit_rate: float = 0.0  # % bearish zones where price went down
+    # ── Cycle ASYMÉTRIQUE (--asym) ──────────────────────────────────────────
+    # Un cycle « normal » (sinusoïde) monte la moitié du temps et baisse l'autre
+    # moitié. Un cycle asymétrique a des durées de hausse/baisse DIFFÉRENTES
+    # (ex. 120 barres ↑ puis 83 barres ↓). Quand `bull_mask` est renseigné, il
+    # REMPLACE le masque sinusoïdal (le pipeline l'utilise tel quel).
+    bull_mask: Optional[np.ndarray] = None   # masque haussier explicite (asym.)
+    asym: Optional[Tuple[int, int, int]] = None  # (U up-bars, D down-bars, phase φ)
 
 
 def _detrend_log(prices: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -295,6 +302,76 @@ def get_bullish_mask(prices: np.ndarray, period: int) -> np.ndarray:
     mask[1:] = osc[1:] > osc[:-1]
     mask[0] = mask[1]
     return mask
+
+
+def _asym_mask(N: int, P: int, U: int, phi: int) -> np.ndarray:
+    """Masque haussier d'un cycle ASYMÉTRIQUE : U barres ↑ puis D=P-U barres ↓,
+    répété, décalé de la phase φ."""
+    pos = (np.arange(N) - phi) % P
+    return pos < U
+
+
+def detect_asym_cycle(prices: np.ndarray, period: float,
+                      min_ratio: float = 0.12, max_ratio: float = 0.88):
+    """Meilleur découpage ASYMÉTRIQUE (U barres ↑ / D barres ↓, phase φ) pour la
+    période donnée, en maximisant le rendement (log) capturé si l'on tient LONG
+    pendant la phase de hausse. Renvoie (U, D, φ, mask, score_log) ou None.
+
+    Recherche EXHAUSTIVE : tous les U de min_ratio·P à max_ratio·P (pas de 1
+    barre) et toutes les phases φ, mais entièrement vectorisée (O(P²)) via une
+    somme des rendements par position de phase puis des fenêtres circulaires."""
+    P = int(round(period))
+    N = len(prices)
+    if P < 8 or N < 2 * P + 2:
+        return None
+    lp = np.log(np.asarray(prices, dtype=float))
+    dr = np.zeros(N)
+    dr[1:] = lp[1:] - lp[:-1]                        # rendements log journaliers
+    pos = np.arange(N) % P
+    S = np.bincount(pos, weights=dr, minlength=P)    # Σ des rendements par phase
+    pref = np.concatenate([[0.0], np.cumsum(np.concatenate([S, S]))])
+    Umin = max(2, int(round(min_ratio * P)))
+    Umax = min(P - 2, int(round(max_ratio * P)))
+    best = None
+    for U in range(Umin, Umax + 1):
+        win = pref[U:U + P] - pref[0:P]              # win[φ] = Σ S[φ .. φ+U)
+        phi = int(np.argmax(win))
+        val = float(win[phi])
+        if best is None or val > best[-1]:
+            best = (U, P - U, phi, val)
+    if best is None:
+        return None
+    U, D, phi, val = best
+    return (U, D, phi, _asym_mask(N, P, U, phi), val)
+
+
+def build_asym_pool(prices: np.ndarray, periods, max_add: int = 14,
+                    min_asym: float = 0.08) -> List["CycleInfo"]:
+    """Construit des CycleInfo ASYMÉTRIQUES (masque explicite) pour les périodes
+    données, en ne gardant que celles NETTEMENT asymétriques (sinon redondantes
+    avec les cycles symétriques). Triées par score, tronquées à `max_add`."""
+    out = []
+    seen = set()
+    for p in periods:
+        p = int(round(p))
+        if p in seen:
+            continue
+        seen.add(p)
+        r = detect_asym_cycle(prices, p)
+        if r is None:
+            continue
+        U, D, phi, mask, val = r
+        if abs(U / float(U + D) - 0.5) < min_asym:
+            continue                                # trop proche du 50/50
+        ci = CycleInfo(
+            period=p, period_exact=float(p), amplitude=0.0, strength=1.0,
+            stability=0.0, phase_state="", current_value=0.0, current_direction=0.0,
+            oscillator=np.array([]), r_squared=0.0, amplitude_log=0.0,
+            coeff_a=0.0, coeff_b=0.0, bull_mask=mask, asym=(U, D, phi),
+        )
+        out.append((val, ci))
+    out.sort(key=lambda x: x[0], reverse=True)
+    return [ci for _, ci in out[:max_add]]
 
 
 def bars_to_next_turning_point(cycle: "CycleInfo") -> Tuple[int, str]:

@@ -35,6 +35,12 @@ on:
         default: "non"
         type: choice
         options: ["non", "oui"]
+      asym:
+        description: "Chercher aussi des cycles ASYMÉTRIQUES (durées hausse/baisse différentes) ?"
+        required: false
+        default: "non"
+        type: choice
+        options: ["non", "oui"]
 
 jobs:
   screen:
@@ -61,6 +67,7 @@ jobs:
           SCREEN_START: ${{ inputs.start }}
           MIN_ZONES: ${{ inputs.min_zones }}
           MIN_HIT: ${{ inputs.min_hit }}
+          ASYM: ${{ inputs.asym }}
           # Telegram uniquement si demandé (par défaut « non » → résultat dans le log seulement)
           TELEGRAM_TOKEN: ${{ inputs.telegram == 'oui' && secrets.TELEGRAM_TOKEN || '' }}
           TELEGRAM_CHAT_ID: ${{ inputs.telegram == 'oui' && secrets.TELEGRAM_CHAT_ID || '' }}
