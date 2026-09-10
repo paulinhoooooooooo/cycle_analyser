@@ -414,8 +414,45 @@ def plot_single_cycle(
     _set_date_ticks(ax_osc, dates, N)
 
     if _is_asym:
-        # Cycle asymétrique : pas de projection future sinusoïdale (motif non
-        # sinusoïdal). On finalise le graphique ici.
+        # Cycle asymétrique : la projection sinusoïdale n'a pas de sens, MAIS le
+        # motif est déterministe → on calcule directement les transitions.
+        from datetime import timedelta
+        Ua, Da, phia = cycle.asym
+        Pa = Ua + Da
+        _avg = (dates[-1] - dates[0]).days / max(N - 1, 1)
+
+        # (a) Dates PASSÉES sur l'oscillateur : 2 derniers débuts (▲) et fins (▼)
+        # de cycle haussier, en TOUT PETIT pour rester lisible.
+        starts = [t for t in range(N) if (t - phia) % Pa == 0]
+        ends = [t for t in range(N) if (t - phia) % Pa == (Ua - 1)]
+        for t in starts[-2:]:
+            ax_osc.text(t, 1.18, f"▲{dates[t].strftime('%d/%m/%y')}",
+                        color=GREEN, fontsize=4.0, ha="center", va="bottom",
+                        clip_on=False, alpha=0.9, zorder=6)
+        for t in ends[-2:]:
+            ax_osc.text(t, -1.18, f"▼{dates[t].strftime('%d/%m/%y')}",
+                        color=RED, fontsize=4.0, ha="center", va="top",
+                        clip_on=False, alpha=0.9, zorder=6)
+
+        # (b) PROCHAIN début de cycle HAUSSIER (marqueur sur le prix + date).
+        nb = N
+        while (nb - phia) % Pa != 0:
+            nb += 1
+        bars_ahead = nb - (N - 1)
+        fut_date = dates[-1] + timedelta(days=int(round(bars_ahead * _avg)))
+        cal_days = int(round(bars_ahead * _avg))
+        pad_a = max(5, int(Pa * 0.12))
+        ax_price.set_xlim(0, nb + pad_a)
+        ax_osc.set_xlim(0, nb + pad_a)
+        ax_price.axvline(nb, color=GREEN, linewidth=1.4, linestyle="--", alpha=0.85, zorder=5)
+        _yb = ymin + (ymax - ymin) * 0.45
+        ax_price.text(
+            nb + pad_a * 0.15, _yb,
+            f"↑ Prochain cycle HAUSSIER\n{fut_date.strftime('%d/%m/%Y')}\n(dans {cal_days} j)",
+            color=GREEN, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL, edgecolor=GREEN, alpha=0.9),
+        )
+
         import warnings as _w
         with _w.catch_warnings():
             _w.simplefilter("ignore")
