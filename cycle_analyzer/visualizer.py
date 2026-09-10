@@ -427,11 +427,11 @@ def plot_single_cycle(
         ends = [t for t in range(N) if (t - phia) % Pa == (Ua - 1)]
         for t in starts[-2:]:
             ax_osc.text(t, 1.18, f"▲{dates[t].strftime('%d/%m/%y')}",
-                        color=GREEN, fontsize=4.0, ha="center", va="bottom",
+                        color=GREEN, fontsize=5.0, ha="center", va="bottom",
                         clip_on=False, alpha=0.9, zorder=6)
         for t in ends[-2:]:
             ax_osc.text(t, -1.18, f"▼{dates[t].strftime('%d/%m/%y')}",
-                        color=RED, fontsize=4.0, ha="center", va="top",
+                        color=RED, fontsize=5.0, ha="center", va="top",
                         clip_on=False, alpha=0.9, zorder=6)
 
         # (b) PROCHAIN début de cycle HAUSSIER (marqueur sur le prix + date).
