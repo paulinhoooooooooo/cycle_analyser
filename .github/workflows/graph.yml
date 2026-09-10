@@ -1,0 +1,52 @@
+name: Générer un graphique asymétrique
+
+# À la demande : génère le PNG d'un cycle asymétrique (--asym) et le commit
+# dans graphs/ pour qu'on puisse le voir.
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Ticker Yahoo"
+        required: true
+        default: "CAT"
+      start:
+        description: "start (JJ/MM/AAAA), vide si aucun"
+        required: false
+        default: "01/01/2016"
+      period:
+        description: "Période du cycle à tracer (ex: 179)"
+        required: true
+        default: "179"
+
+permissions:
+  contents: write   # pour commiter le PNG généré
+
+jobs:
+  graph:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+      - name: Générer le graphique
+        env:
+          TICKER: ${{ inputs.ticker }}
+          START: ${{ inputs.start }}
+          PERIOD: ${{ inputs.period }}
+        run: python gen_asym_graph.py
+      - name: Commiter le PNG
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add graphs/*.png
+          if git diff --cached --quiet; then
+            echo "Aucun graphique à commiter."
+          else
+            git commit -m "Graphique asymétrique généré [skip ci]"
+            git push
+          fi
