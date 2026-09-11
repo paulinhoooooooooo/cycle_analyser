@@ -657,20 +657,21 @@ def plot_combination(
         _add_combo_marker(ax_price, next_bull, GREEN, "↑ Alignement\nhaussier", 0.72)
         _add_combo_marker(ax_price, next_bear, RED,   "↓ Alignement\nbaissier", 0.28)
 
-    # ── Dashed future extension for each individual oscillator ────────────────
-    # Mêmes coefficients (période entière) que les courbes pleines → continuité.
-    t_fut = np.arange(N - 1, new_xlim[1] + 1, dtype=float)
-    for ci, cycle in enumerate(cycles_int):
-        ax_osc = fig.axes[1 + ci]
-        col = CYCLE_COLORS[ci % len(CYCLE_COLORS)]
-        amp_c = cycle.amplitude_log + 1e-10
-        fut_osc = (
-            cycle.coeff_a * np.cos(2 * np.pi * t_fut / cycle.period)
-            + cycle.coeff_b * np.sin(2 * np.pi * t_fut / cycle.period)
-        ) / amp_c
-        ax_osc.plot(t_fut, fut_osc, color=col, linewidth=1.0, linestyle="--", alpha=0.45, zorder=3)
-        # Dates affichées AU NIVEAU de la sinusoïde bleue (prochain creux/pic).
-        _annotate_future_transitions(ax_osc, t_fut, fut_osc, dates, N, col)
+        # ── Dashed future extension for each individual oscillator ────────────
+        # Mêmes coefficients (période entière) que les courbes pleines →
+        # continuité. SINUSOÏDAL → uniquement si aucun cycle asymétrique.
+        t_fut = np.arange(N - 1, new_xlim[1] + 1, dtype=float)
+        for ci, cycle in enumerate(cycles_int):
+            ax_osc = fig.axes[1 + ci]
+            col = CYCLE_COLORS[ci % len(CYCLE_COLORS)]
+            amp_c = cycle.amplitude_log + 1e-10
+            fut_osc = (
+                cycle.coeff_a * np.cos(2 * np.pi * t_fut / cycle.period)
+                + cycle.coeff_b * np.sin(2 * np.pi * t_fut / cycle.period)
+            ) / amp_c
+            ax_osc.plot(t_fut, fut_osc, color=col, linewidth=1.0, linestyle="--", alpha=0.45, zorder=3)
+            # Dates affichées AU NIVEAU de la sinusoïde bleue (prochain creux/pic).
+            _annotate_future_transitions(ax_osc, t_fut, fut_osc, dates, N, col)
 
     import warnings
     with warnings.catch_warnings():
