@@ -1,0 +1,46 @@
+name: Comparaison calage des cycles (prévisualisation)
+
+# PRÉVISUALISATION uniquement : génère un graphique à 3 volets (Actuel /
+# Rognage / Rognage+Calage) pour comparer avant de décider. Ne modifie pas
+# le logiciel. Résultat = artefact PNG téléchargeable.
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Ticker Yahoo"
+        required: true
+        default: "BTC-USD"
+      start:
+        description: "Date de départ (AAAA-MM-JJ ou JJ/MM/AAAA)"
+        required: false
+        default: "2015-01-01"
+      period:
+        description: "Période du cycle à afficher (barres). Vide = meilleur cycle asym auto"
+        required: false
+        default: ""
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Générer la comparaison
+        env:
+          TICKER: ${{ inputs.ticker }}
+          START: ${{ inputs.start }}
+          PERIOD: ${{ inputs.period }}
+        run: |
+          python compare_align.py
+          ls -la graphs/*.png
+      - name: Publier le graphique (artefact téléchargeable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: comparaison-${{ inputs.ticker }}
+          path: graphs/*.png
+          retention-days: 7
