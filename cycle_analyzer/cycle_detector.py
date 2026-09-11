@@ -369,14 +369,20 @@ def _anchor_troughs(prices: np.ndarray, P: int, max_anchors: int = 12) -> List[i
 
 
 def detect_anchored_cycle(prices: np.ndarray, period: float,
-                          u_lo: float = 0.20, u_hi: float = 0.88):
-    """CYCLE RÉGULIER ANCRÉ, objectif LONG-SHORT. Cherche conjointement le
-    découpage U (hausse) / D (baisse) ET l'ANCRAGE `a` (un vrai plus-bas d'où le
-    cycle est projeté vers l'avant) qui maximise À LA FOIS le rendement de la
-    hausse ET le gain d'un short pendant la baisse — les deux devant être fiables.
-    Ainsi la phase baissière se cale sur les vrais krachs (au lieu d'être « le
-    reste »). Le cycle reste régulier (période P fixe). Renvoie un dict ou None.
+                          u_lo: float = 0.20, u_hi: float = 0.88,
+                          both_sides: bool = False):
+    """CYCLE RÉGULIER ANCRÉ. Cherche conjointement le découpage U (hausse) /
+    D (baisse) ET l'ANCRAGE `a` (un vrai plus-bas d'où le cycle est projeté vers
+    l'avant) qui maximise le rendement.
 
+    Par DÉFAUT (both_sides=False) → on maximise UNIQUEMENT la HAUSSE
+    (rendement des zones haussières × réussite haussière). La phase baissière
+    reste « le reste » ; comme la hausse veut finir au plus haut, la baisse se
+    cale naturellement sur la vraie chute.
+    Avec both_sides=True (--bilateral) → on récompense AUSSI le short pendant la
+    baisse (hausse + gain short), les deux jambes devant être fiables.
+
+    Le cycle reste régulier (période P fixe). Renvoie un dict ou None.
     Rendements calculés par ZONE (extrémités de prix), pas par somme de rendements
     journaliers (qui serait dégénérée) → l'ancrage et le découpage comptent."""
     P = int(round(period))
@@ -409,7 +415,10 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
                 continue
             up_hit = up_hits / up_n
             dn_hit = dn_hits / dn_n
-            val = (up_ret + dn_gain) * min(up_hit, dn_hit)   # les deux jambes comptent
+            if both_sides:
+                val = (up_ret + dn_gain) * min(up_hit, dn_hit)   # hausse ET baisse
+            else:
+                val = up_ret * up_hit                            # HAUSSE uniquement
             if best is None or val > best["val"]:
                 best = dict(val=val, U=U, D=P - U, anchor=a,
                             up_ret=up_ret * 100.0, dn_gain=dn_gain * 100.0,
@@ -436,7 +445,7 @@ def _anchored_ci(prices: np.ndarray, period: int, b: dict) -> "CycleInfo":
 
 
 def build_anchored_pool(prices: np.ndarray, periods, per_bucket: int = 7,
-                        max_add: int = 24) -> List["CycleInfo"]:
+                        max_add: int = 24, both_sides: bool = False) -> List["CycleInfo"]:
     """Cycles réguliers ANCRÉS (objectif long-short) pour les périodes données.
     Une seule meilleure variante par période. **Diversifié par DURÉE** : sans ça,
     les grands cycles (rendement absolu énorme) monopolisent le pool et éjectent
@@ -449,7 +458,7 @@ def build_anchored_pool(prices: np.ndarray, periods, per_bucket: int = 7,
         if p in seen or p < 15:
             continue
         seen.add(p)
-        b = detect_anchored_cycle(prices, p)
+        b = detect_anchored_cycle(prices, p, both_sides=both_sides)
         if b is None:
             continue
         scored.append((b["val"], _anchored_ci(prices, p, b)))

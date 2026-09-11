@@ -618,7 +618,10 @@ def analyze_combinations(
         for _p in range(300, min(_cap, n_bars // 2) + 1, 60):
             _periods.add(_p)
         _periods = sorted(p for p in _periods if 15 <= p < _cap)
-        pool = pool + build_anchored_pool(prices, _periods, per_bucket=5, max_add=16)
+        # Par défaut on optimise l'ancrage sur la HAUSSE seule ; le short n'entre
+        # dans le choix que si --bilateral (both_sides) est demandé.
+        pool = pool + build_anchored_pool(prices, _periods, per_bucket=5,
+                                          max_add=16, both_sides=both_sides)
 
     results: Dict = {2: [], 3: [], "short_2": [], "short_3": [], "court": []}
 
