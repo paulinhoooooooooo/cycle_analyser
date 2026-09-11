@@ -1,0 +1,36 @@
+name: Test génération rapport
+
+# Vérifie que cycle_analyser.py génère le rapport sans crash (utile pour --asym).
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Ticker Yahoo"
+        required: true
+        default: "ITW"
+      start:
+        description: "start (AAAA-MM-JJ ou JJ/MM/AAAA)"
+        required: false
+        default: "2012-01-01"
+      extra:
+        description: "Arguments supplémentaires (ex: --asym)"
+        required: false
+        default: "--asym"
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Générer le rapport
+        run: |
+          python cycle_analyser.py "${{ inputs.ticker }}" --start "${{ inputs.start }}" \
+            ${{ inputs.extra }} --no-browser --output report.html
+          echo "--- OK : rapport généré ---"
+          ls -la report.html
