@@ -68,47 +68,55 @@ def variant_trim(mask):
     return out, active
 
 
-def variant_snap(prices, U, D, phi, win_frac=0.10):
-    """Rogne + recale chaque frontière sur le vrai extremum du prix :
-    - un DÉBUT de hausse est glissé vers le plus-bas local le plus proche ;
-    - une FIN de hausse (début de baisse) vers le plus-haut local le plus proche.
-    Cycles alors légèrement irréguliers mais régimes bien plus nets."""
+def _troughs(prices, min_sep):
+    """Indices des vrais plus-bas locaux (creux), espacés d'au moins `min_sep`
+    barres. Sert de points d'ancrage candidats pour démarrer un cycle."""
+    from scipy.signal import find_peaks
+    idx, _ = find_peaks(-np.asarray(prices, float), distance=max(3, int(min_sep)))
+    cand = list(idx)
+    # On ajoute aussi le tout premier creux global de la fenêtre initiale.
+    head = int(np.argmin(prices[:max(2, min_sep)])) if len(prices) else 0
+    if head not in cand:
+        cand = [head] + cand
+    return sorted(set(cand))
+
+
+def detect_anchored(prices, P, u_frac_lo=0.20, u_frac_hi=0.85):
+    """CYCLE RÉGULIER ANCRÉ. Période FIXE P (=U+D). On cherche conjointement :
+      - le découpage U (hausse) / D (baisse), et
+      - l'ANCRAGE `a` = un vrai plus-bas d'où on projette le cycle vers l'avant,
+    qui MAXIMISE le rendement haussier capturé sur la zone active [a, fin].
+    Rien n'est compté avant `a`. Le cycle reste régulier (U/D fixes, période P)
+    donc prévisible : prochain début = dernier début + P.
+    Retourne (mask, active_start, U, D, score, hit, n_zones) ou None."""
     N = len(prices)
-    P = U + D
-    win = max(5, int(round(P * win_frac)))
-
-    def loc_min(c):
-        lo, hi = max(0, c - win), min(N, c + win + 1)
-        return lo + int(np.argmin(prices[lo:hi]))
-
-    def loc_max(c):
-        lo, hi = max(0, c - win), min(N, c + win + 1)
-        return lo + int(np.argmax(prices[lo:hi]))
-
-    bull_starts, bear_starts = [], []
-    k = -1
-    while True:
-        bs = int(round(phi + k * P))
-        pk = bs + U
-        if bs >= N and pk >= N:
-            break
-        if 0 <= bs < N:
-            bull_starts.append(bs)
-        if 0 <= pk < N:
-            bear_starts.append(pk)
-        k += 1
-        if k > N // max(P, 1) + 3:
-            break
-
-    snap_bull = sorted(set(loc_min(c) for c in bull_starts))
-    snap_bear = sorted(set(loc_max(c) for c in bear_starts))
-
-    mask = np.zeros(N, dtype=bool)
-    for bs in snap_bull:
-        nb = next((x for x in snap_bear if x > bs), N)
-        mask[bs:nb] = True
-    active = snap_bull[0] if snap_bull else 0
-    return mask, active
+    anchors = _troughs(prices, min_sep=max(5, P // 4))
+    u_lo, u_hi = int(P * u_frac_lo), int(P * u_frac_hi)
+    step = max(1, P // 60)
+    best = None
+    for U in range(u_lo, u_hi + 1, step):
+        D = P - U
+        for a in anchors:
+            mask = np.zeros(N, dtype=bool)
+            k = 0
+            while a + k * P < N:
+                s = a + k * P
+                mask[s:min(N, s + U)] = True
+                k += 1
+            runs = [(s, e) for s, e in _runs(mask) if s >= a and e > s]
+            full = [(s, e) for s, e in runs if (e - s + 1) >= U - 1]
+            if len(full) < 2:            # il faut au moins 2 répétitions complètes
+                continue
+            score = sum(_pct(prices, s, e) for s, e in runs)
+            hits = sum(1 for s, e in runs if prices[e] > prices[s])
+            hit = 100.0 * hits / len(runs)
+            val = score * (hit / 100.0)   # rendement pondéré par la réussite
+            if best is None or val > best[0]:
+                best = (val, mask, a, U, D, score, hit, len(runs))
+    if best is None:
+        return None
+    _, mask, a, U, D, score, hit, nz = best
+    return mask, a, U, D, score, hit, nz
 
 
 def _pct(prices, s, e):
@@ -178,19 +186,30 @@ def main():
         mask = ci.bull_mask
     print(f"Cycle {period}b  ↑{U}/↓{D}  phi={phi}")
 
+    # NOUVEAU : cycle RÉGULIER ANCRÉ (période fixe, ancré sur un vrai creux,
+    # tronqué avant sa 1re répétition qui marche, U/D ré-optimisés).
+    anc = detect_anchored(prices, period)
+    if anc is None:
+        print("Pas d'ancrage régulier exploitable (moins de 2 répétitions)."); sys.exit(1)
+    a_mask, a_active, aU, aD, a_score, a_hit, a_nz = anc
+    a_date = dates[a_active].strftime("%d/%m/%Y")
+    print(f"ANCRÉ : début {a_date} · ↑{aU}/↓{aD} (période {aU + aD}b) · "
+          f"rdt {a_score:+.0f}% · {a_nz} zones · réussite {a_hit:.0f}%")
+
     variants = [
-        ("1. ACTUEL — le cycle démarre au jour J", *variant_actuel(mask)),
-        ("2. ROGNAGE — rien avant le 1er début de cycle haussier", *variant_trim(mask)),
-        ("3. ROGNAGE + CALAGE sur les vrais creux/sommets", *variant_snap(prices, U, D, phi)),
+        (f"1. ACTUEL — cycle {period}b ↑{U}/↓{D}, démarre au jour J",
+         *variant_actuel(mask)),
+        (f"2. CYCLE RÉGULIER ANCRÉ — ↑{aU}/↓{aD} (période {aU + aD}b) fixe, "
+         f"débute le {a_date} (rien avant)", a_mask, a_active),
     ]
 
-    fig, axes = plt.subplots(3, 1, figsize=(16, 11), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(16, 8.2), sharex=True)
     fig.patch.set_facecolor(BG)
     for ax, (title, m, active) in zip(axes, variants):
         _draw(ax, dates, prices, m, active, title)
-    fig.suptitle(f"{ticker} — cycle {period}b ↑{U}/↓{D} · comparaison du calage des cycles",
+    fig.suptitle(f"{ticker} — cycle régulier ancré vs démarrage au jour J",
                  color="#fff", fontsize=12)
-    fig.tight_layout(rect=[0, 0, 1, 0.98])
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
 
     outdir = Path("graphs")
     outdir.mkdir(exist_ok=True)
