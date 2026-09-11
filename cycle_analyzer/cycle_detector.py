@@ -435,10 +435,15 @@ def _anchored_ci(prices: np.ndarray, period: int, b: dict) -> "CycleInfo":
     )
 
 
-def build_anchored_pool(prices: np.ndarray, periods, max_add: int = 16) -> List["CycleInfo"]:
+def build_anchored_pool(prices: np.ndarray, periods, per_bucket: int = 7,
+                        max_add: int = 24) -> List["CycleInfo"]:
     """Cycles réguliers ANCRÉS (objectif long-short) pour les périodes données.
-    Une seule meilleure variante par période, triées par score, tronquées."""
-    out, seen = [], set()
+    Une seule meilleure variante par période. **Diversifié par DURÉE** : sans ça,
+    les grands cycles (rendement absolu énorme) monopolisent le pool et éjectent
+    les cycles courts/moyens (souvent plus robustes, beaucoup plus de zones). On
+    garde donc les `per_bucket` meilleurs de chaque catégorie (court ≤60 /
+    moyen 61-180 / long >180), puis on complète au global jusqu'à `max_add`."""
+    scored, seen = [], set()
     for period in periods:
         p = int(round(period))
         if p in seen or p < 15:
@@ -447,9 +452,29 @@ def build_anchored_pool(prices: np.ndarray, periods, max_add: int = 16) -> List[
         b = detect_anchored_cycle(prices, p)
         if b is None:
             continue
-        out.append((b["val"], _anchored_ci(prices, p, b)))
-    out.sort(key=lambda x: x[0], reverse=True)
-    return [ci for _, ci in out[:max_add]]
+        scored.append((b["val"], _anchored_ci(prices, p, b)))
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    def _bucket(period: int) -> str:
+        return "court" if period <= 60 else ("moyen" if period <= 180 else "long")
+
+    kept, counts = [], {"court": 0, "moyen": 0, "long": 0}
+    # 1er passage : au plus `per_bucket` par catégorie (les meilleurs de chaque).
+    for val, ci in scored:
+        bkt = _bucket(ci.period)
+        if counts[bkt] < per_bucket:
+            kept.append((val, ci))
+            counts[bkt] += 1
+    # 2e passage : complète avec les meilleurs restants, toutes catégories.
+    if len(kept) < max_add:
+        chosen = {id(ci) for _, ci in kept}
+        for val, ci in scored:
+            if id(ci) not in chosen:
+                kept.append((val, ci))
+                if len(kept) >= max_add:
+                    break
+    kept.sort(key=lambda x: x[0], reverse=True)
+    return [ci for _, ci in kept[:max_add]]
 
 
 def build_asym_pool(prices: np.ndarray, periods, max_add: int = 14,
