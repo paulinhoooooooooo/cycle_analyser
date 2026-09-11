@@ -1,0 +1,30 @@
+name: Debug pool cycles
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Ticker Yahoo"
+        required: true
+        default: "ITW"
+      start:
+        description: "Date de départ"
+        required: false
+        default: "2012-01-01"
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Debug
+        env:
+          TICKER: ${{ inputs.ticker }}
+          START: ${{ inputs.start }}
+        run: python debug_pool.py
