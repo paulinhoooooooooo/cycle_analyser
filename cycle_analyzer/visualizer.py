@@ -133,6 +133,48 @@ def _annotate_recent_transitions(ax, x, osc_norm, dates, color, n_each: int = 2)
                 zorder=6, clip_on=True, alpha=0.85)
 
 
+def _combined_bull_mask_vis(prices, combo) -> np.ndarray:
+    """Masque haussier COMBINÉ (tous les cycles montent en même temps) sur
+    l'historique. Utilise le masque asymétrique explicite s'il existe."""
+    m = np.ones(len(prices), dtype=bool)
+    for c in combo.cycles:
+        bm = getattr(c, "bull_mask", None)
+        m &= bm if bm is not None else get_bullish_mask(prices, c.period)
+    return m
+
+
+def _combined_bull_mask_extended(prices, combo, horizon: int) -> np.ndarray:
+    """Masque haussier combiné prolongé de `horizon` barres dans le FUTUR.
+    Asym → motif déterministe ; symétrique → prolongement sinusoïdal."""
+    N = len(prices)
+    T = N + horizon
+    t = np.arange(T, dtype=float)
+    m = np.ones(T, dtype=bool)
+    for c in combo.cycles:
+        asym = getattr(c, "asym", None)
+        if asym is not None:
+            U, D, phi = asym
+            P = U + D
+            cm = ((t.astype(int) - phi) % P) < U
+        else:
+            A, B = _int_period_coeffs(prices, c.period)
+            osc = A * np.cos(2 * np.pi * t / c.period) + B * np.sin(2 * np.pi * t / c.period)
+            cm = np.empty(T, dtype=bool)
+            cm[1:] = osc[1:] > osc[:-1]
+            cm[0] = cm[1]
+        m &= cm
+    return m
+
+
+def _next_combined_bull_start(mask_ext, N: int):
+    """Barres jusqu'au PROCHAIN début de zone haussière combinée (front montant
+    à t >= N), ou None si aucun dans l'horizon."""
+    for t in range(N, len(mask_ext)):
+        if mask_ext[t] and not mask_ext[t - 1]:
+            return t - (N - 1)
+    return None
+
+
 # ── Cycle table figure ────────────────────────────────────────────────────────
 
 def plot_cycle_table(cycles: List[CycleInfo]) -> plt.Figure:
@@ -522,10 +564,14 @@ def plot_combination(
 ) -> plt.Figure:
     n_cycles = len(combo.cycles)
     fig = plt.figure(figsize=(18, 5 + 1.2 * n_cycles), facecolor=BG)
-    gs = GridSpec(1 + n_cycles, 1, figure=fig, height_ratios=[3] + [1] * n_cycles, hspace=0.08)
+    # Panneaux : prix (haut) + oscillateur COMBINÉ + un oscillateur par cycle.
+    gs = GridSpec(2 + n_cycles, 1, figure=fig,
+                  height_ratios=[3, 0.95] + [1] * n_cycles, hspace=0.08)
 
     ax_price = fig.add_subplot(gs[0])
     ax_price.set_facecolor(PANEL)
+    ax_combo = fig.add_subplot(gs[1], sharex=ax_price)   # oscillateur COMBINÉ
+    ax_combo.set_facecolor(PANEL)
 
     N = len(prices)
     x = np.arange(N)
@@ -584,7 +630,7 @@ def plot_combination(
 
     # ── Individual oscillators below ──────────────────────────────────────
     for ci, cycle in enumerate(combo.cycles):
-        ax = fig.add_subplot(gs[1 + ci], sharex=ax_price)
+        ax = fig.add_subplot(gs[2 + ci], sharex=ax_price)
         ax.set_facecolor(PANEL)
         col = CYCLE_COLORS[ci % len(CYCLE_COLORS)]
 
@@ -619,59 +665,56 @@ def plot_combination(
         else:
             _set_date_ticks(ax, dates, N)
 
-    # ── Next alignment markers ────────────────────────────────────────────────
-    # Cycles avec coefficients ré-ajustés à la période entière : les marqueurs
-    # d'alignement et les projections prolongent exactement les courbes pleines
-    # (et coïncident avec les dates du bot Telegram).
-    # Les projections futures sont SINUSOÏDALES : on les DÉSACTIVE si la combo
-    # contient un cycle ASYMÉTRIQUE (le motif n'est pas une sinusoïde).
-    if not _has_asym:
-        cycles_int = []
-        for c in combo.cycles:
-            A_i, B_i = _int_period_coeffs(prices, c.period)
-            cycles_int.append(_dc_replace(c, coeff_a=A_i, coeff_b=B_i))
-        next_bull, next_bear = _next_combo_alignments(cycles_int, N)
+    # ── Panneau OSCILLATEUR COMBINÉ (tous les cycles montent EN MÊME TEMPS) ────
+    # Créneau vert (+1) = zone haussière de la COMBINAISON ; rouge (−1) sinon.
+    # C'est la lecture directe des vraies zones (le « ET » des cycles).
+    comb_hist = _combined_bull_mask_vis(prices, combo)
+    _cv = np.where(comb_hist, 1.0, -1.0)
+    ax_combo.step(x, _cv, color=GREEN, linewidth=1.4, where="mid", zorder=3)
+    ax_combo.axhline(0, color=GRID, linewidth=1, zorder=2)
+    ax_combo.fill_between(x, _cv, 0, where=comb_hist, color=GREEN, alpha=0.28, zorder=1)
+    ax_combo.fill_between(x, _cv, 0, where=~comb_hist, color=RED, alpha=0.20, zorder=1)
+    ax_combo.set_ylim(-1.55, 1.55)
+    ax_combo.set_ylabel("Combinaison", fontsize=8, color=GREEN)
+    ax_combo.grid(True, color=GRID, linewidth=0.4)
+    ax_combo.tick_params(labelbottom=False)
 
-        x_max_extra = max(v for v in [next_bull, next_bear, 1] if v is not None)
-        pad_combo = max(10, int(x_max_extra * 0.12))
-        new_xlim = (0, N - 1 + x_max_extra + pad_combo)
-        ax_price.set_xlim(*new_xlim)
-        for ci in range(n_cycles):
-            fig.axes[1 + ci].set_xlim(*new_xlim)
+    # Dates PASSÉES de CHAQUE zone combinée : ▲ début (vert) / ▼ fin (rouge).
+    for zone in combo.zones:
+        ax_combo.text(zone.start, 1.2, f"▲{dates[int(zone.start)].strftime('%d/%m/%y')}",
+                      color=GREEN, fontsize=5.0, ha="center", va="bottom",
+                      clip_on=False, alpha=0.9, zorder=6)
+        ax_combo.text(zone.end, -1.2, f"▼{dates[int(zone.end)].strftime('%d/%m/%y')}",
+                      color=RED, fontsize=5.0, ha="center", va="top",
+                      clip_on=False, alpha=0.9, zorder=6)
 
-        def _add_combo_marker(ax_p, bars, col, label_txt, y_frac):
-            if bars is None:
-                return
-            xv = N - 1 + bars
-            date_s = _future_date_str(dates, bars)
-            ax_p.axvline(xv, color=col, linewidth=1.4, linestyle="--", alpha=0.85, zorder=5)
-            y_pos = ymin + (ymax - ymin) * y_frac
-            ax_p.text(
-                xv + pad_combo * 0.15, y_pos,
-                f"{label_txt}\n{date_s}\n(dans {bars}b)",
-                color=col, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL,
-                          edgecolor=col, alpha=0.85),
-            )
-
-        _add_combo_marker(ax_price, next_bull, GREEN, "↑ Alignement\nhaussier", 0.72)
-        _add_combo_marker(ax_price, next_bear, RED,   "↓ Alignement\nbaissier", 0.28)
-
-        # ── Dashed future extension for each individual oscillator ────────────
-        # Mêmes coefficients (période entière) que les courbes pleines →
-        # continuité. SINUSOÏDAL → uniquement si aucun cycle asymétrique.
-        t_fut = np.arange(N - 1, new_xlim[1] + 1, dtype=float)
-        for ci, cycle in enumerate(cycles_int):
-            ax_osc = fig.axes[1 + ci]
-            col = CYCLE_COLORS[ci % len(CYCLE_COLORS)]
-            amp_c = cycle.amplitude_log + 1e-10
-            fut_osc = (
-                cycle.coeff_a * np.cos(2 * np.pi * t_fut / cycle.period)
-                + cycle.coeff_b * np.sin(2 * np.pi * t_fut / cycle.period)
-            ) / amp_c
-            ax_osc.plot(t_fut, fut_osc, color=col, linewidth=1.0, linestyle="--", alpha=0.45, zorder=3)
-            # Dates affichées AU NIVEAU de la sinusoïde bleue (prochain creux/pic).
-            _annotate_future_transitions(ax_osc, t_fut, fut_osc, dates, N, col)
+    # ── PROCHAINE zone haussière combinée : marqueur (date) sur le prix +
+    # prolongement pointillé du créneau combiné. Déterministe si asym, sinon
+    # extrapolation sinusoïdale.
+    _periods = [c.period for c in combo.cycles]
+    _horizon = int(max(_periods) * 1.6) + 40
+    comb_ext = _combined_bull_mask_extended(prices, combo, _horizon)
+    _bars_ahead = _next_combined_bull_start(comb_ext, N)
+    _avg = (dates[-1] - dates[0]).days / max(N - 1, 1)
+    if _bars_ahead is not None:
+        from datetime import timedelta
+        nb = N - 1 + _bars_ahead
+        pad_c = max(8, int(max(_periods) * 0.10))
+        end = min(nb + pad_c + 1, len(comb_ext))
+        ax_price.set_xlim(0, end - 1)
+        fdate = dates[-1] + timedelta(days=int(round(_bars_ahead * _avg)))
+        cal_d = int(round(_bars_ahead * _avg))
+        ax_price.axvline(nb, color=GREEN, linewidth=1.4, linestyle="--", alpha=0.85, zorder=5)
+        ax_price.text(
+            nb + pad_c * 0.12, ymin + (ymax - ymin) * 0.45,
+            f"↑ Prochaine zone HAUSSIÈRE\n{fdate.strftime('%d/%m/%Y')}\n(dans {cal_d} j)",
+            color=GREEN, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL, edgecolor=GREEN, alpha=0.9),
+        )
+        t_fut = np.arange(N - 1, end)
+        ax_combo.step(t_fut, np.where(comb_ext[N - 1:end], 1.0, -1.0),
+                      color=GREEN, linewidth=1.1, linestyle="--", where="mid",
+                      alpha=0.6, zorder=3)
 
     import warnings
     with warnings.catch_warnings():
