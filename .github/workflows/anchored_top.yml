@@ -1,0 +1,53 @@
+name: Top cycles ancrés (prévisualisation calibration)
+
+# PRÉVISUALISATION : cycles réguliers ANCRÉS avec objectif LONG-SHORT
+# (la baisse se cale sur les vrais krachs). Sort les TOP N cycles en images.
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Ticker Yahoo"
+        required: true
+        default: "BTC-USD"
+      start:
+        description: "Date de départ (AAAA-MM-JJ ou JJ/MM/AAAA)"
+        required: false
+        default: "2015-01-01"
+      topn:
+        description: "Nombre de cycles à sortir"
+        required: false
+        default: "5"
+
+permissions:
+  contents: write
+
+jobs:
+  anchored:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Générer les cycles ancrés
+        env:
+          TICKER: ${{ inputs.ticker }}
+          START: ${{ inputs.start }}
+          TOPN: ${{ inputs.topn }}
+        run: python gen_anchored_top.py
+      - name: Publier les PNG (artefact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ancres-${{ inputs.ticker }}
+          path: graphs/*_ancre_*.png
+          retention-days: 7
+      - name: Commiter les PNG
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f graphs/*_ancre_*.png
+          git commit -m "Cycles ancrés ${{ inputs.ticker }} [skip ci]" || echo "rien à committer"
+          for i in 1 2 3 4; do git push origin HEAD:claude/ecstatic-maxwell-vjoocl && break || sleep $((2**i)); done
