@@ -555,6 +555,32 @@ def _return_scan_pool(prices: np.ndarray, top_n: int = 14,
     return result
 
 
+def _is_classic_combo(cr: "CombinationResult") -> bool:
+    """True si la combinaison n'utilise QUE des cycles CLASSIQUES (non ancrés).
+    Un cycle ancré porte un masque explicite (bull_mask) ; un classique non."""
+    return all(getattr(c, "bull_mask", None) is None for c in cr.cycles)
+
+
+def _ensure_classics(selected, candidates, score, hit, n_extra, mh):
+    """Garantit que les meilleurs combos CLASSIQUES (non ancrés) apparaissent, à
+    côté des combos ancrés — sinon les ancrés (gros rendement cumulé / beaucoup de
+    zones) les noient. On AJOUTE les meilleurs classiques absents de `selected`."""
+    classics = [c for c in candidates if _is_classic_combo(c)]
+    if not classics:
+        return selected
+    extra = pick_diverse(classics, score=score, hit=hit, n=n_extra,
+                         min_hit=mh, cross_dedup=False)
+    out = list(selected)
+    seen = {tuple(sorted(c.periods)) for c in out}
+    for c in extra:
+        k = tuple(sorted(c.periods))
+        if k not in seen:
+            out.append(c)
+            seen.add(k)
+    out.sort(key=score, reverse=True)
+    return out
+
+
 def analyze_combinations(
     prices: np.ndarray,
     cycles: List[CycleInfo],
@@ -622,6 +648,10 @@ def analyze_combinations(
         # dans le choix que si --bilateral (both_sides) est demandé.
         pool = pool + build_anchored_pool(prices, _periods, per_bucket=5,
                                           max_add=16, both_sides=both_sides)
+
+    # Le pool contient-il des cycles ANCRÉS ? Si oui, on garantira que les combos
+    # CLASSIQUES apparaissent aussi (sinon les ancrés les noient).
+    _has_anchored = any(getattr(c, "bull_mask", None) is not None for c in pool)
 
     results: Dict = {2: [], 3: [], "short_2": [], "short_3": [], "court": []}
 
@@ -747,6 +777,14 @@ def analyze_combinations(
         results[1] = _best_variants(_all_passing(singles_long, _qual, _hit_gate_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
         results[2] = _best_variants(_all_passing(pairs, _qual, _hit_gate_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
         results[3] = _best_variants(_all_passing(triples, _qual, _hit_gate_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
+        # En mode ancré : garantir aussi les meilleurs combos CLASSIQUES qui passent.
+        if _has_anchored:
+            _pass_pairs = _all_passing(pairs, _qual, _hit_gate_l)
+            _pass_tri = _all_passing(triples, _qual, _hit_gate_l)
+            _pass_sing = _all_passing(singles_long, _qual, _hit_gate_l)
+            results[1] = _ensure_classics(results[1], _pass_sing, _ret_l, _hit_l, 3, mh)
+            results[2] = _ensure_classics(results[2], _pass_pairs, _ret_l, _hit_l, 3, mh)
+            results[3] = _ensure_classics(results[3], _pass_tri, _ret_l, _hit_l, 3, mh)
         # "court" est un simple re-découpage des paires/triples → redondant quand on
         # montre déjà TOUT ; on le vide pour éviter les doublons dans le récap.
         results["court"] = []
@@ -777,6 +815,14 @@ def analyze_combinations(
     results["court"] = pick_diverse(short_only, score=_qual, hit=_hit_l,
                                     n=top_n_per_size, min_hit=mh, cross_dedup=True)
 
+    # En mode ANCRÉ, on garantit que les meilleurs combos CLASSIQUES ressortent
+    # aussi (sinon les ancrés à gros rendement cumulé les masquent).
+    if _has_anchored:
+        _nx = max(2, top_n_per_size // 2 + 1)
+        results[2] = _ensure_classics(results[2], pairs, _qual, _hit_l, _nx, mh)
+        results[3] = _ensure_classics(results[3], triples, _qual, _hit_l, _nx, mh)
+        results["court"] = _ensure_classics(results["court"], short_only, _qual, _hit_l, _nx, mh)
+
     # Cycles SIMPLES (1 cycle) proposés dans le récap, même sans filtre :
     # réussite >= 80%, les top_n_per_size meilleurs par rendement.
     # Construits depuis le POOL COMPLET (FFT + scan par rendement) — comme en mode
@@ -791,6 +837,9 @@ def analyze_combinations(
     _singles.sort(key=lambda r: r.total_return_pct, reverse=True)
     results[1] = _best_variants(_singles, lambda c: c.total_return_pct,
                                 lambda c: c.hit_rate, lambda c: c.n_zones)[:top_n_per_size]
+    if _has_anchored:
+        results[1] = _ensure_classics(results[1], _singles, lambda c: c.total_return_pct,
+                                      lambda c: c.hit_rate, max(2, top_n_per_size // 2 + 1), 0.0)
 
     # Résumé du haut : les 3 meilleures COMBINAISONS (jamais un cycle simple).
     results["diverse"] = pick_diverse(results[2] + results[3] + results["court"],
