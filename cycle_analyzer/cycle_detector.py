@@ -387,7 +387,9 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
     journaliers (qui serait dégénérée) → l'ancrage et le découpage comptent."""
     P = int(round(period))
     N = len(prices)
-    if P < 8 or N < 2 * P + 2:
+    # Il faut de la place pour AU MOINS 3 répétitions : un « cycle » qui ne se
+    # répète que 2 fois n'est pas un cycle mais un suivi de tendance.
+    if P < 8 or N < 3 * P:
         return None
     p = np.asarray(prices, dtype=float)
     anchors = _anchor_troughs(p, P)
@@ -411,7 +413,7 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
                     r = (p[de] - p[ds]) / p[ds]
                     dn_gain += -r; dn_n += 1; dn_hits += (r < 0)
                 k += 1
-            if up_n < 2 or dn_n < 2:
+            if up_n < 3 or dn_n < 3:      # au moins 3 répétitions = vrai cycle
                 continue
             up_hit = up_hits / up_n
             dn_hit = dn_hits / dn_n
