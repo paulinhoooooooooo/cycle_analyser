@@ -336,10 +336,20 @@ def plot_single_cycle(
         amp = cycle.amplitude_log
         bullish = get_bullish_mask(prices, cycle.period)
 
+    # Cycle ANCRÉ : rien n'est affiché/compté avant `active_start` (demi-phase
+    # tronquée du début). On grise cette zone et on démarre le calcul à l'ancrage.
+    _active = int(getattr(cycle, "active_start", 0) or 0)
+    if _active >= N:
+        _active = 0
+
     # Set ylim before annotating so text positions are correct
     ymax = prices.max() * 1.02
     ymin = prices.min() * 0.98
     ax_price.set_ylim(ymin, ymax)
+    if _active > 0:
+        ax_price.axvspan(0, _active, color="#8b949e", alpha=0.08, zorder=1)
+        ax_osc.axvspan(0, _active, color="#8b949e", alpha=0.08, zorder=1)
+        ax_price.axvline(_active, color="#8b949e", linewidth=0.8, linestyle=":", alpha=0.7, zorder=4)
     y_top = ymin + (ymax - ymin) * 0.985
     y_bot = ymin + (ymax - ymin) * 0.015
 
@@ -353,7 +363,7 @@ def plot_single_cycle(
     bear_zone_idx = 0
     bull_dur_total = 0   # somme des durées (barres) des zones haussières comptées
 
-    i = 0
+    i = _active          # rien n'est compté avant l'ancrage (cycle ancré)
     while i < N:
         if bullish[i]:
             start = i
@@ -441,6 +451,9 @@ def plot_single_cycle(
 
     # Draw oscillator normalized
     osc_norm = osc / (amp + 1e-10)
+    if _active > 0:                       # pas d'oscillateur avant l'ancrage
+        osc_norm = osc_norm.astype(float).copy()
+        osc_norm[:_active] = np.nan
     ax_osc.plot(x, osc_norm, color=BLUE, linewidth=1.5, zorder=3, label=f"Oscillateur {cycle.period}")
     # Dates des 2 derniers creux/pics PASSÉS (en plus des futurs).
     if not _is_asym:
@@ -465,8 +478,8 @@ def plot_single_cycle(
 
         # (a) Dates PASSÉES sur l'oscillateur : 2 derniers débuts (▲) et fins (▼)
         # de cycle haussier, en TOUT PETIT pour rester lisible.
-        starts = [t for t in range(N) if (t - phia) % Pa == 0]
-        ends = [t for t in range(N) if (t - phia) % Pa == (Ua - 1)]
+        starts = [t for t in range(N) if (t - phia) % Pa == 0 and t >= _active]
+        ends = [t for t in range(N) if (t - phia) % Pa == (Ua - 1) and t >= _active]
         for t in starts:
             ax_osc.text(t, 1.18, f"▲{dates[t].strftime('%d/%m/%y')}",
                         color=GREEN, fontsize=5.0, ha="center", va="bottom",

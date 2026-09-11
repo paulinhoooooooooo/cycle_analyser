@@ -32,6 +32,14 @@ class CycleInfo:
     # REMPLACE le masque sinusoïdal (le pipeline l'utilise tel quel).
     bull_mask: Optional[np.ndarray] = None   # masque haussier explicite (asym.)
     asym: Optional[Tuple[int, int, int]] = None  # (U up-bars, D down-bars, phase φ)
+    # ── Cycle ANCRÉ (régulier + calé sur un vrai creux) ─────────────────────────
+    # `active_start` = 1re barre où le cycle démarre vraiment (un vrai plus-bas) ;
+    # tout ce qui précède n'est ni affiché ni compté (demi-phase tronquée). Le
+    # cycle reste régulier (période P fixe) → prochain début = dernier début + P.
+    # `bear_mask` = masque baissier explicite (False avant `active_start`), pour
+    # que la phase baissière soit, elle aussi, inactive avant l'ancrage.
+    active_start: int = 0
+    bear_mask: Optional[np.ndarray] = None
 
 
 def _detrend_log(prices: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -343,6 +351,105 @@ def detect_asym_cycle(prices: np.ndarray, period: float,
         return None
     U, D, phi, val = best
     return (U, D, phi, _asym_mask(N, P, U, phi), val)
+
+
+def _anchor_troughs(prices: np.ndarray, P: int, max_anchors: int = 12) -> List[int]:
+    """Vrais plus-bas locaux (creux) servant de points d'ancrage candidats, classés
+    par PROÉMINENCE (les creux les plus marqués d'abord) et plafonnés à
+    `max_anchors` pour rester rapide. Inclut toujours le 1er creux de la fenêtre."""
+    p = np.asarray(prices, dtype=float)
+    N = len(p)
+    idx, props = find_peaks(-np.log(p), distance=max(5, P // 4), prominence=1e-9)
+    order = list(np.argsort(props.get("prominences", np.zeros(len(idx))))[::-1])
+    anchors = [int(idx[i]) for i in order[:max_anchors]]
+    head = int(np.argmin(p[:max(2, min(P, N))]))   # 1er vrai creux du début
+    if head not in anchors:
+        anchors.append(head)
+    return sorted(set(anchors))
+
+
+def detect_anchored_cycle(prices: np.ndarray, period: float,
+                          u_lo: float = 0.20, u_hi: float = 0.88):
+    """CYCLE RÉGULIER ANCRÉ, objectif LONG-SHORT. Cherche conjointement le
+    découpage U (hausse) / D (baisse) ET l'ANCRAGE `a` (un vrai plus-bas d'où le
+    cycle est projeté vers l'avant) qui maximise À LA FOIS le rendement de la
+    hausse ET le gain d'un short pendant la baisse — les deux devant être fiables.
+    Ainsi la phase baissière se cale sur les vrais krachs (au lieu d'être « le
+    reste »). Le cycle reste régulier (période P fixe). Renvoie un dict ou None.
+
+    Rendements calculés par ZONE (extrémités de prix), pas par somme de rendements
+    journaliers (qui serait dégénérée) → l'ancrage et le découpage comptent."""
+    P = int(round(period))
+    N = len(prices)
+    if P < 8 or N < 2 * P + 2:
+        return None
+    p = np.asarray(prices, dtype=float)
+    anchors = _anchor_troughs(p, P)
+    lo, hi = max(2, int(P * u_lo)), min(P - 2, int(P * u_hi))
+    step = max(1, P // 80)
+    best = None
+    for U in range(lo, hi + 1, step):
+        for a in anchors:
+            up_ret = dn_gain = 0.0
+            up_hits = up_n = dn_hits = dn_n = 0
+            k = 0
+            while a + k * P < N:
+                s = a + k * P
+                e = min(N - 1, s + U - 1)
+                if e > s:
+                    r = (p[e] - p[s]) / p[s]
+                    up_ret += r; up_n += 1; up_hits += (r > 0)
+                ds = s + U
+                de = min(N - 1, s + P - 1)
+                if ds < N and de > ds:
+                    r = (p[de] - p[ds]) / p[ds]
+                    dn_gain += -r; dn_n += 1; dn_hits += (r < 0)
+                k += 1
+            if up_n < 2 or dn_n < 2:
+                continue
+            up_hit = up_hits / up_n
+            dn_hit = dn_hits / dn_n
+            val = (up_ret + dn_gain) * min(up_hit, dn_hit)   # les deux jambes comptent
+            if best is None or val > best["val"]:
+                best = dict(val=val, U=U, D=P - U, anchor=a,
+                            up_ret=up_ret * 100.0, dn_gain=dn_gain * 100.0,
+                            up_hit=up_hit * 100.0, dn_hit=dn_hit * 100.0)
+    return best
+
+
+def _anchored_ci(prices: np.ndarray, period: int, b: dict) -> "CycleInfo":
+    """Construit un CycleInfo pour un cycle régulier ANCRÉ (masques hausse/baisse
+    explicites, False avant l'ancrage)."""
+    N = len(prices)
+    U, D, a = b["U"], b["D"], b["anchor"]
+    P = U + D
+    active = np.arange(N) >= a
+    bull = _asym_mask(N, P, U, a % P) & active
+    bear = (~_asym_mask(N, P, U, a % P)) & active
+    return CycleInfo(
+        period=P, period_exact=float(P), amplitude=0.0, strength=1.0,
+        stability=0.0, phase_state="", current_value=0.0, current_direction=0.0,
+        oscillator=np.array([]), r_squared=0.0, amplitude_log=0.0,
+        coeff_a=0.0, coeff_b=0.0, bull_mask=bull, asym=(U, D, a),
+        active_start=int(a), bear_mask=bear,
+    )
+
+
+def build_anchored_pool(prices: np.ndarray, periods, max_add: int = 16) -> List["CycleInfo"]:
+    """Cycles réguliers ANCRÉS (objectif long-short) pour les périodes données.
+    Une seule meilleure variante par période, triées par score, tronquées."""
+    out, seen = [], set()
+    for period in periods:
+        p = int(round(period))
+        if p in seen or p < 15:
+            continue
+        seen.add(p)
+        b = detect_anchored_cycle(prices, p)
+        if b is None:
+            continue
+        out.append((b["val"], _anchored_ci(prices, p, b)))
+    out.sort(key=lambda x: x[0], reverse=True)
+    return [ci for _, ci in out[:max_add]]
 
 
 def build_asym_pool(prices: np.ndarray, periods, max_add: int = 14,

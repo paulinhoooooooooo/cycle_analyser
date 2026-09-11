@@ -8,7 +8,7 @@ import numpy as np
 
 from .cycle_detector import (
     CycleInfo, get_bullish_mask, _detrend_log, _fit_sine, _phase_state,
-    build_asym_pool,
+    build_asym_pool, build_anchored_pool,
 )
 
 
@@ -97,6 +97,15 @@ def _bull_mask_for(prices: np.ndarray, c: CycleInfo, masks: dict = None) -> np.n
     return get_bullish_mask(prices, c.period)
 
 
+def _bear_mask_for(prices: np.ndarray, c: CycleInfo, masks: dict = None) -> np.ndarray:
+    """Masque baissier d'un cycle. Cycle ANCRÉ → masque explicite (False avant
+    l'ancrage), sinon complément du masque haussier."""
+    bm = getattr(c, "bear_mask", None)
+    if bm is not None:
+        return bm
+    return ~_bull_mask_for(prices, c, masks)
+
+
 def _combined_bullish_mask(prices: np.ndarray, cycles: List[CycleInfo], masks: dict = None) -> np.ndarray:
     mask = np.ones(len(prices), dtype=bool)
     for c in cycles:
@@ -105,9 +114,12 @@ def _combined_bullish_mask(prices: np.ndarray, cycles: List[CycleInfo], masks: d
 
 
 def _combined_bearish_mask(prices: np.ndarray, cycles: List[CycleInfo], masks: dict = None) -> np.ndarray:
+    # AND des masques baissiers : pour des cycles ancrés, chacun est déjà False
+    # avant son ancrage → la combinaison n'est active qu'à partir du DERNIER
+    # ancrage (là où tous les cycles sont enfin actifs).
     mask = np.ones(len(prices), dtype=bool)
     for c in cycles:
-        mask &= ~_bull_mask_for(prices, c, masks)
+        mask &= _bear_mask_for(prices, c, masks)
     return mask
 
 
@@ -592,15 +604,19 @@ def analyze_combinations(
     if max_period is not None:
         pool = [c for c in pool if c.period < max_period]
 
-    # --asym : ajoute au pool des cycles ASYMÉTRIQUES (durées hausse/baisse
-    # différentes) pour les mêmes périodes candidates. Ils portent un masque
-    # explicite et coexistent avec les cycles symétriques (le meilleur des deux
-    # ressort). Ajout borné pour ne pas faire exploser la combinatoire.
+    # --asym : le pool devient entièrement des CYCLES RÉGULIERS ANCRÉS (calés sur
+    # un vrai creux, objectif long-short → la baisse se cale sur les vrais krachs,
+    # rien n'est compté avant l'ancrage). Périodes candidates = celles trouvées
+    # (FFT + scan) + une bande de périodes LONGUES pour capter les grands cycles
+    # réguliers (ex. halving BTC ~4 ans) que la FFT peut rater. Chaque cycle porte
+    # ses masques hausse/baisse explicites ; symétrique = simple cas U≈D.
     if asym:
-        _asym_periods = [c.period for c in pool]
-        if max_period is not None:
-            _asym_periods = [p for p in _asym_periods if p < max_period]
-        pool = pool + build_asym_pool(prices, _asym_periods, max_add=14)
+        _cap = max_period if max_period is not None else n_bars // 2
+        _periods = {c.period for c in pool}
+        for _p in range(300, min(_cap, n_bars // 2) + 1, 60):
+            _periods.add(_p)
+        _periods = sorted(p for p in _periods if 15 <= p < _cap)
+        pool = build_anchored_pool(prices, _periods, max_add=20)
 
     results: Dict = {2: [], 3: [], "short_2": [], "short_3": [], "court": []}
 
