@@ -604,19 +604,21 @@ def analyze_combinations(
     if max_period is not None:
         pool = [c for c in pool if c.period < max_period]
 
-    # --asym : le pool devient entièrement des CYCLES RÉGULIERS ANCRÉS (calés sur
-    # un vrai creux, objectif long-short → la baisse se cale sur les vrais krachs,
-    # rien n'est compté avant l'ancrage). Périodes candidates = celles trouvées
-    # (FFT + scan) + une bande de périodes LONGUES pour capter les grands cycles
-    # réguliers (ex. halving BTC ~4 ans) que la FFT peut rater. Chaque cycle porte
-    # ses masques hausse/baisse explicites ; symétrique = simple cas U≈D.
+    # --asym : on CUMULE deux familles de cycles (le meilleur des deux ressort) :
+    #   (1) les cycles CLASSIQUES depuis le start (déjà dans `pool` : FFT + scan),
+    #       qui donnent des combos denses type 80+177 ;
+    #   (2) des cycles RÉGULIERS ANCRÉS (calés sur un vrai creux, objectif
+    #       long-short → la baisse se cale sur les vrais krachs, rien avant
+    #       l'ancrage), pour capter aussi les grands cycles type halving.
+    # Périodes candidates pour (2) = celles trouvées + une bande de périodes
+    # LONGUES que la FFT peut rater. On AJOUTE, on ne remplace pas.
     if asym:
         _cap = max_period if max_period is not None else n_bars // 2
         _periods = {c.period for c in pool}
         for _p in range(300, min(_cap, n_bars // 2) + 1, 60):
             _periods.add(_p)
         _periods = sorted(p for p in _periods if 15 <= p < _cap)
-        pool = build_anchored_pool(prices, _periods, max_add=20)
+        pool = pool + build_anchored_pool(prices, _periods, per_bucket=5, max_add=16)
 
     results: Dict = {2: [], 3: [], "short_2": [], "short_3": [], "court": []}
 
