@@ -563,15 +563,11 @@ def plot_combination(
     ticker: str = "",
 ) -> plt.Figure:
     n_cycles = len(combo.cycles)
-    fig = plt.figure(figsize=(18, 5 + 1.2 * n_cycles), facecolor=BG)
-    # Panneaux : prix (haut) + oscillateur COMBINÉ + un oscillateur par cycle.
-    gs = GridSpec(2 + n_cycles, 1, figure=fig,
-                  height_ratios=[3, 0.95] + [1] * n_cycles, hspace=0.08)
+    fig = plt.figure(figsize=(18, 4.6 + 1.2 * n_cycles), facecolor=BG)
+    gs = GridSpec(1 + n_cycles, 1, figure=fig, height_ratios=[3] + [1] * n_cycles, hspace=0.08)
 
     ax_price = fig.add_subplot(gs[0])
     ax_price.set_facecolor(PANEL)
-    ax_combo = fig.add_subplot(gs[1], sharex=ax_price)   # oscillateur COMBINÉ
-    ax_combo.set_facecolor(PANEL)
 
     N = len(prices)
     x = np.arange(N)
@@ -628,31 +624,31 @@ def plot_combination(
     ax_price.grid(True, color=GRID, linewidth=0.5)
     ax_price.tick_params(labelbottom=False)
 
-    # ── Individual oscillators below ──────────────────────────────────────
+    # ── Oscillateurs par cycle, AVEC les bandes de la COMBINAISON qui DESCENDENT ─
+    # Les colonnes vertes (zones où TOUS les cycles montent) sont prolongées du
+    # prix jusqu'en bas → on repère d'un coup d'œil les vraies zones haussières.
+    osc_axes = []
     for ci, cycle in enumerate(combo.cycles):
-        ax = fig.add_subplot(gs[2 + ci], sharex=ax_price)
+        ax = fig.add_subplot(gs[1 + ci], sharex=ax_price)
         ax.set_facecolor(PANEL)
+        osc_axes.append(ax)
         col = CYCLE_COLORS[ci % len(CYCLE_COLORS)]
+
+        # Bandes de la combinaison (mêmes colonnes que sur le prix)
+        for z in combo.zones:
+            ax.axvspan(z.start, z.end, color=GREEN_FILL, alpha=0.22, zorder=0)
+        for z in combo.bearish_zones:
+            ax.axvspan(z.start, z.end, color=RED_FILL, alpha=0.10, zorder=0)
 
         _cyc_asym = getattr(cycle, "asym", None)
         if _cyc_asym is not None and getattr(cycle, "bull_mask", None) is not None:
-            # Cycle ASYMÉTRIQUE : oscillateur = créneau (+1 pendant la hausse,
-            # -1 pendant la baisse), pas une sinusoïde.
-            bull = cycle.bull_mask
-            osc_norm = np.where(bull, 1.0, -1.0)
+            osc_norm = np.where(cycle.bull_mask, 1.0, -1.0)
             ax.step(x, osc_norm, color=col, linewidth=1.4, where="mid", zorder=3)
         else:
             osc = get_oscillator_series(prices, cycle.period)
             osc_norm = osc / (cycle.amplitude_log + 1e-10)
             ax.plot(x, osc_norm, color=col, linewidth=1.5, zorder=3)
-            bull = get_bullish_mask(prices, cycle.period)
         ax.axhline(0, color=GRID, linewidth=1, zorder=2)
-
-        ax.fill_between(x, osc_norm, 0, where=bull, color=GREEN, alpha=0.25, zorder=1)
-        ax.fill_between(x, osc_norm, 0, where=~bull, color=RED, alpha=0.20, zorder=1)
-        # Dates des 2 derniers creux/pics PASSÉS (en plus des futurs).
-        if _cyc_asym is None:
-            _annotate_recent_transitions(ax, x, osc_norm, dates, col)
         ax.set_ylim(-1.55, 1.55)
 
         _ylab = (f"{cycle.period}b ↑{_cyc_asym[0]}/↓{_cyc_asym[1]}" if _cyc_asym
@@ -665,32 +661,10 @@ def plot_combination(
         else:
             _set_date_ticks(ax, dates, N)
 
-    # ── Panneau OSCILLATEUR COMBINÉ (tous les cycles montent EN MÊME TEMPS) ────
-    # Créneau vert (+1) = zone haussière de la COMBINAISON ; rouge (−1) sinon.
-    # C'est la lecture directe des vraies zones (le « ET » des cycles).
-    comb_hist = _combined_bull_mask_vis(prices, combo)
-    _cv = np.where(comb_hist, 1.0, -1.0)
-    ax_combo.step(x, _cv, color=GREEN, linewidth=1.4, where="mid", zorder=3)
-    ax_combo.axhline(0, color=GRID, linewidth=1, zorder=2)
-    ax_combo.fill_between(x, _cv, 0, where=comb_hist, color=GREEN, alpha=0.28, zorder=1)
-    ax_combo.fill_between(x, _cv, 0, where=~comb_hist, color=RED, alpha=0.20, zorder=1)
-    ax_combo.set_ylim(-1.55, 1.55)
-    ax_combo.set_ylabel("Combinaison", fontsize=8, color=GREEN)
-    ax_combo.grid(True, color=GRID, linewidth=0.4)
-    ax_combo.tick_params(labelbottom=False)
-
-    # Dates PASSÉES de CHAQUE zone combinée : ▲ début (vert) / ▼ fin (rouge).
-    for zone in combo.zones:
-        ax_combo.text(zone.start, 1.2, f"▲{dates[int(zone.start)].strftime('%d/%m/%y')}",
-                      color=GREEN, fontsize=5.0, ha="center", va="bottom",
-                      clip_on=False, alpha=0.9, zorder=6)
-        ax_combo.text(zone.end, -1.2, f"▼{dates[int(zone.end)].strftime('%d/%m/%y')}",
-                      color=RED, fontsize=5.0, ha="center", va="top",
-                      clip_on=False, alpha=0.9, zorder=6)
-
-    # ── PROCHAINE zone haussière combinée : marqueur (date) sur le prix +
-    # prolongement pointillé du créneau combiné. Déterministe si asym, sinon
-    # extrapolation sinusoïdale.
+    # ── PROCHAINE zone haussière combinée : bande verte FUTURE prolongée sur
+    # TOUS les panneaux (prix + oscillateurs) + marqueur daté sur le prix.
+    # Déterministe pour l'asym ; extrapolation sinusoïdale sinon.
+    _all_axes = [ax_price] + osc_axes
     _periods = [c.period for c in combo.cycles]
     _horizon = int(max(_periods) * 1.6) + 40
     comb_ext = _combined_bull_mask_extended(prices, combo, _horizon)
@@ -699,22 +673,24 @@ def plot_combination(
     if _bars_ahead is not None:
         from datetime import timedelta
         nb = N - 1 + _bars_ahead
+        nb_end = nb
+        while nb_end < len(comb_ext) and comb_ext[nb_end]:
+            nb_end += 1
         pad_c = max(8, int(max(_periods) * 0.10))
-        end = min(nb + pad_c + 1, len(comb_ext))
-        ax_price.set_xlim(0, end - 1)
+        end = min(max(nb_end, nb) + pad_c + 1, len(comb_ext))
+        fz_end = min(nb_end, end - 1)
+        for ax in _all_axes:
+            ax.set_xlim(0, end - 1)
+            ax.axvspan(nb, fz_end, color=GREEN_FILL, alpha=0.20, zorder=0)   # zone future
+            ax.axvline(nb, color=GREEN, linewidth=1.2, linestyle="--", alpha=0.8, zorder=5)
         fdate = dates[-1] + timedelta(days=int(round(_bars_ahead * _avg)))
         cal_d = int(round(_bars_ahead * _avg))
-        ax_price.axvline(nb, color=GREEN, linewidth=1.4, linestyle="--", alpha=0.85, zorder=5)
         ax_price.text(
-            nb + pad_c * 0.12, ymin + (ymax - ymin) * 0.45,
+            nb + pad_c * 0.12, ymin + (ymax - ymin) * 0.5,
             f"↑ Prochaine zone HAUSSIÈRE\n{fdate.strftime('%d/%m/%Y')}\n(dans {cal_d} j)",
             color=GREEN, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
             bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL, edgecolor=GREEN, alpha=0.9),
         )
-        t_fut = np.arange(N - 1, end)
-        ax_combo.step(t_fut, np.where(comb_ext[N - 1:end], 1.0, -1.0),
-                      color=GREEN, linewidth=1.1, linestyle="--", where="mid",
-                      alpha=0.6, zorder=3)
 
     import warnings
     with warnings.catch_warnings():
