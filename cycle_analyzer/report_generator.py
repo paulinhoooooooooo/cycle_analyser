@@ -42,6 +42,30 @@ def _combo_phase(combo: CombinationResult) -> tuple:
     return _COMBO_PHASE["neutral"]
 
 
+def _cycle_period_label(c: CycleInfo) -> str:
+    """Libellé COURT d'un cycle (badge) : '1456b' ou, si asymétrique, '1456b ↑1058/↓398'."""
+    a = getattr(c, "asym", None)
+    return f"{c.period}b ↑{a[0]}/↓{a[1]}" if a else f"{c.period}b"
+
+
+def _cycle_title(c: CycleInfo) -> str:
+    """Titre LONG d'un cycle simple (carte) : asymétrique → détaille hausse/baisse."""
+    a = getattr(c, "asym", None)
+    if a:
+        return f"Cycle {c.period} b · ↑{a[0]} hausse / ↓{a[1]} baisse"
+    return f"Cycle {c.period} barres"
+
+
+def _cycle_phase_badge(c: CycleInfo) -> tuple:
+    """(label, bg, fg) de la phase actuelle d'un cycle. Les cycles asymétriques
+    n'ont pas de `phase_state` → on la déduit de leur masque haussier explicite."""
+    a = getattr(c, "asym", None)
+    bm = getattr(c, "bull_mask", None)
+    if a is not None and bm is not None and len(bm):
+        return _PHASE_BADGE["bullish"] if bm[-1] else _PHASE_BADGE["bearish"]
+    return _PHASE_BADGE.get(c.phase_state, ("—", "#21262d", "#c9d1d9"))
+
+
 def _cycle_row_html(c: CycleInfo) -> str:
     label, bg, fg = _PHASE_BADGE.get(c.phase_state, ("—", "#21262d", "#c9d1d9"))
     stab_weight = "bold" if c.stability >= 0.5 else "normal"
@@ -83,7 +107,7 @@ def _summary_html(
 
     single_rows = ""
     for ci, sc in top_singles[:3]:
-        label, bg, fg = _PHASE_BADGE.get(ci.phase_state, ("—", "#21262d", "#c9d1d9"))
+        label, bg, fg = _cycle_phase_badge(ci)
         bull_s = f"{sc.total_return_pct:+.1f}%"
         bull_c = f"{sc.compound_return_pct:+.1f}%"
         short_s = f"{-sc.bearish_total_return_pct:+.1f}%"
@@ -92,7 +116,7 @@ def _summary_html(
         short_col2 = "color:var(--green)" if sc.short_compound_return_pct >= 0 else "color:var(--red)"
         single_rows += f"""
         <tr>
-          <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{ci.period}b</span></td>
+          <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{_cycle_period_label(ci)}</span></td>
           <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{label}</span></td>
           <td><span class="ret-val" data-simple="{bull_s}" data-compound="{bull_c}" style="{bull_col}">{bull_s}</span></td>
           <td><span class="ret-val" data-simple="{short_s}" data-compound="{short_c}" style="{short_col2}">{short_s}</span></td>
@@ -351,8 +375,11 @@ def generate_report(
     # Cycles simples affichés = results[1] (construit dans les deux modes, classé par
     # rendement) → cartes et récap montrent EXACTEMENT les mêmes cycles simples.
     _single_combos = combinations.get(1, [])
-    _cyc_by_period = {c.period: c for c in cycles}
-    top3 = [_cyc_by_period.get(sc.periods[0], sc.cycles[0]) for sc in _single_combos]
+    # On garde le cycle RÉELLEMENT utilisé par la combo (sc.cycles[0]) : c'est lui
+    # qui porte l'éventuelle asymétrie (masque + ↑U/↓D). Ne PAS le remplacer par un
+    # cycle symétrique de même période (sinon un cycle simple asym plus performant
+    # serait « re-symétrisé » à l'affichage).
+    top3 = [sc.cycles[0] for sc in _single_combos]
     top3_combos = list(_single_combos)
     imgs_top3 = [fig_to_base64(plot_single_cycle(prices, dates, c, ticker)) for c in top3]
 
@@ -367,7 +394,8 @@ def generate_report(
     # ── HTML ──────────────────────────────────────────────────────────────────
     top3_html = ""
     for _idx, (c, sc, img) in enumerate(zip(top3, top3_combos, imgs_top3), 1):
-        label, bg, fg = _PHASE_BADGE.get(c.phase_state, ("—", "#21262d", "#c9d1d9"))
+        label, bg, fg = _cycle_phase_badge(c)
+        _asym = getattr(c, "asym", None)
         _rank = _idx   # numérotation = ordre d'affichage (par rendement décroissant)
         short_total = -sc.bearish_total_return_pct
         short_col = "green" if short_total >= 0 else "red"
@@ -379,15 +407,28 @@ def generate_report(
         n_short = len(sc.bearish_zones)
         avg_long = sc.avg_return_pct
         avg_short = (sum(-z.return_pct for z in sc.bearish_zones) / n_short) if n_short else 0.0
+        # Chips descriptifs : cycle ASYMÉTRIQUE → découpage hausse/baisse (Amp/Force/
+        # Stab n'ont pas de sens pour un masque asym). Sinon → Amp/Force/Stab classiques.
+        if _asym:
+            _U, _D, _phi = _asym
+            desc_chips = (
+                f'<span class="stat-chip green">↑ {_U} barres hausse</span>'
+                f'<span class="stat-chip red">↓ {_D} barres baisse</span>'
+                f'<span class="stat-chip">Période {c.period} b</span>'
+            )
+        else:
+            desc_chips = (
+                f'<span class="stat-chip">Amp: {c.amplitude:,.2f}</span>'
+                f'<span class="stat-chip">Force: {c.strength:.2f}</span>'
+                f'<span class="stat-chip green">Stab: {c.stability:.2f}</span>'
+            )
         top3_html += f"""
         <div class="card">
           <div class="card-header">
             <span class="rank-badge">#{_rank}</span>
-            <span class="combo-title">Cycle {c.period} barres</span>
+            <span class="combo-title">{_cycle_title(c)}</span>
             <span class="badge" style="background:{bg}33;border:1px solid {fg};color:{fg}">{label}</span>
-            <span class="stat-chip">Amp: {c.amplitude:,.2f}</span>
-            <span class="stat-chip">Force: {c.strength:.2f}</span>
-            <span class="stat-chip green">Stab: {c.stability:.2f}</span>
+            {desc_chips}
             <span class="stat-chip green ret-val" data-simple="{bull_s}" data-compound="{bull_c}">{bull_s}</span>
             <span class="stat-chip {short_col} ret-val" data-simple="{bear_s}" data-compound="{bear_c}">{bear_s}</span>
             <span class="stat-chip">{sc.hit_rate:.0f}% réussite long</span>
