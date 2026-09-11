@@ -1,0 +1,60 @@
+name: Graphiques des cycles du rapport
+
+# Génère UN PNG par cycle simple du rapport (asym ou symétrique) et les commit
+# dans graphs/ pour qu'on puisse les voir en image.
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Ticker Yahoo"
+        required: true
+        default: "CAT"
+      start:
+        description: "Date de départ (AAAA-MM-JJ ou JJ/MM/AAAA), vide = 15y"
+        required: false
+        default: "2015-01-01"
+      asym:
+        description: "Activer les cycles asymétriques (--asym) ?"
+        required: false
+        default: "oui"
+        type: choice
+        options: ["oui", "non"]
+      reussite:
+        description: "Réussite minimum en % (comme --reussite), vide = aucun filtre"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  graphs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Générer les graphiques
+        env:
+          TICKER: ${{ inputs.ticker }}
+          START: ${{ inputs.start }}
+          ASYM: ${{ inputs.asym }}
+          REUSSITE: ${{ inputs.reussite }}
+        run: python gen_report_graphs.py
+      - name: Publier les PNG (artefact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycles-${{ inputs.ticker }}
+          path: graphs/*.png
+          retention-days: 7
+      - name: Commiter les PNG (pour prévisualisation)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f graphs/*.png
+          git commit -m "Graphiques cycles ${{ inputs.ticker }} [skip ci]" || echo "rien à committer"
+          for i in 1 2 3 4; do git push origin HEAD:claude/ecstatic-maxwell-vjoocl && break || sleep $((2**i)); done
