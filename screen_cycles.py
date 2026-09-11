@@ -57,7 +57,13 @@ def _combo_label(cr):
 
 def _best_combos(prices):
     """Retourne la liste des combos LONG (tailles 1,2,3) : (periods, rdt, zones, hit, label)."""
-    cycles = detect_cycles(prices, min_period=15, max_period=min(300, len(prices) // 3))
+    # Plafond relevé à 1500 barres (~6 ans) et exigence abaissée à 2 cycles dans
+    # l'historique (au lieu de 3) → détecte les CYCLES LONGS (ex. halving BTC ~4 ans).
+    # Réglable via MAX_PERIOD. Rappel : un cycle très long a peu de zones → pense
+    # à baisser min_zones (MIN_ZONES) pour qu'il passe le filtre de fiabilité.
+    _cap = int(os.environ.get("MAX_PERIOD", "1500"))
+    cycles = detect_cycles(prices, min_period=15,
+                           max_period=min(_cap, len(prices) // 2))
     if not cycles:
         return []
     res = analyze_combinations(prices, cycles, top_n_per_size=5, asym=ASYM)

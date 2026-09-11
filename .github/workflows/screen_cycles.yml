@@ -41,6 +41,11 @@ on:
         default: "non"
         type: choice
         options: ["non", "oui"]
+      max_period:
+        description: "Période MAX en barres (plafond). 1500 = cycles longs type BTC 4 ans"
+        required: false
+        default: "1500"
+        type: string
 
 jobs:
   screen:
@@ -68,6 +73,7 @@ jobs:
           MIN_ZONES: ${{ inputs.min_zones }}
           MIN_HIT: ${{ inputs.min_hit }}
           ASYM: ${{ inputs.asym }}
+          MAX_PERIOD: ${{ inputs.max_period }}
           # Telegram uniquement si demandé (par défaut « non » → résultat dans le log seulement)
           TELEGRAM_TOKEN: ${{ inputs.telegram == 'oui' && secrets.TELEGRAM_TOKEN || '' }}
           TELEGRAM_CHAT_ID: ${{ inputs.telegram == 'oui' && secrets.TELEGRAM_CHAT_ID || '' }}
