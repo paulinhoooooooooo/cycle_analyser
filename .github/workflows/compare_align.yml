@@ -44,3 +44,10 @@ jobs:
           name: comparaison-${{ inputs.ticker }}
           path: graphs/*.png
           retention-days: 7
+      - name: Committer le PNG (pour prévisualisation)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f graphs/*.png
+          git commit -m "Prévisualisation calage ${{ inputs.ticker }} [skip ci]" || echo "rien à committer"
+          for i in 1 2 3 4; do git push origin HEAD:claude/ecstatic-maxwell-vjoocl && break || sleep $((2**i)); done
