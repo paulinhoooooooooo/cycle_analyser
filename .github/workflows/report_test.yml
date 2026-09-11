@@ -34,3 +34,22 @@ jobs:
             ${{ inputs.extra }} --no-browser --output report.html
           echo "--- OK : rapport généré ---"
           ls -la report.html
+      - name: Diagnostic — cycles asymétriques dans le rapport ?
+        run: |
+          echo "=== Occurrences du libellé asym (↑U/↓D) dans le HTML ==="
+          # Compte les libellés « ↑123/↓45 » et « ↑123 hausse » produits pour les cycles asym.
+          N=$(grep -oE '↑[0-9]+/↓[0-9]+|↑[0-9]+ (barres )?hausse' report.html | wc -l || true)
+          echo "Nombre de libellés asym trouvés : $N"
+          echo "--- Détail (titres de cartes « Cycle … ») ---"
+          grep -oE 'Cycle [0-9]+ b · ↑[0-9]+ hausse / ↓[0-9]+ baisse|Cycle [0-9]+ barres' report.html | sort | uniq -c || true
+          if [ "$N" -gt 0 ]; then
+            echo "✅ Des cycles simples ASYMÉTRIQUES apparaissent bien dans le rapport."
+          else
+            echo "⚠ Aucun cycle asym affiché : soit --asym absent, soit les cycles symétriques sont plus performants."
+          fi
+      - name: Publier le rapport (artefact téléchargeable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-${{ inputs.ticker }}
+          path: report.html
+          retention-days: 7
