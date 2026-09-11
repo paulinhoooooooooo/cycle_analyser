@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""DIAGNOSTIC : montre le pool de cycles et le classement des combos pour un
-ticker, afin de comprendre pourquoi tel combo (ex. 80+177) apparaît ou non.
-Env : TICKER, START. Ne modifie rien."""
+"""DIAGNOSTIC ciblé : pourquoi 80+177 disparaît-il ? Compare SANS --asym
+(comportement d'origine) et AVEC. Env : TICKER, START. Ne modifie rien."""
 import os, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from cycle_analyzer.data_fetcher import fetch_data, get_close_prices
-from cycle_analyzer.cycle_detector import detect_cycles, build_anchored_pool
+from cycle_analyzer.cycle_detector import detect_cycles
 from cycle_analyzer.combination_analyzer import (
     analyze_combinations, compute_single_cycle_hit_rates, _build_combo,
+    _return_scan_pool,
 )
 
 ticker = os.environ.get("TICKER", "ITW").upper()
@@ -19,46 +19,46 @@ prices = get_close_prices(data)
 N = len(prices)
 print(f"{ticker} | {N} barres | start {start}\n")
 
-# Pool CLASSIQUE (FFT + scan), comme dans analyze_combinations
 cyc = detect_cycles(prices, min_period=10, max_period=None)
 for c in cyc:
     c.hit_rate, c.short_hit_rate = compute_single_cycle_hit_rates(prices, c.period)
-classic_periods = sorted({c.period for c in cyc})
-print(f"Périodes CLASSIQUES détectées ({len(classic_periods)}): {classic_periods}")
-print("  80 présent ?", 80 in classic_periods, "| ~177 présent ?",
-      any(170 <= p <= 184 for p in classic_periods),
-      "->", [p for p in classic_periods if 170 <= p <= 184])
 
-# Pool ANCRÉ (hausse seule), périodes = classiques + bande longue
-_cap = N // 2
-periods = set(classic_periods)
-for p in range(300, N // 2 + 1, 60):
-    periods.add(p)
-anch = build_anchored_pool(prices, sorted(periods), per_bucket=5, max_add=16)
-print(f"\nCycles ANCRÉS retenus ({len(anch)}):")
-for c in anch:
-    print(f"   {c.period}b ↑{c.asym[0]}/↓{c.asym[1]} (ancre {c.active_start})")
+# Reconstitue le POOL symétrique EXACTEMENT comme analyze_combinations (FFT + scan)
+seen, pool_sym = set(), []
+for c in cyc[:30]:
+    if c.period not in seen:
+        pool_sym.append(c); seen.add(c.period)
+    if len(pool_sym) >= 25:
+        break
+for c in _return_scan_pool(prices):
+    if c.period not in seen:
+        pool_sym.append(c); seen.add(c.period)
+sym_periods = sorted(c.period for c in pool_sym)
+print(f"POOL symétrique ({len(sym_periods)}): {sym_periods}")
+print("  177 présent ?", 177 in sym_periods, "| 356 ?", 356 in sym_periods,
+      "| 80 ?", 80 in sym_periods)
 
-# Combo 80+177 CLASSIQUE : le construit-on, et que vaut-il ?
-def _find(p):
-    cand = [c for c in cyc if abs(c.period - p) <= 4]
-    return min(cand, key=lambda c: abs(c.period - p)) if cand else None
-c80, c177 = _find(80), _find(177)
-print("\n--- Combo CLASSIQUE 80+177 (symétrique) ---")
-if c80 and c177:
-    cr = _build_combo(prices, [c80, c177])
-    if cr:
-        print(f"   {c80.period}+{c177.period} : rdt {cr.total_return_pct:+.0f}% · "
-              f"{cr.n_zones} zones · réussite {cr.hit_rate:.0f}%")
-    else:
-        print("   combo dégénéré")
-else:
-    print(f"   introuvable dans le pool (80={c80 is not None}, 177={c177 is not None})")
+def _closest(pool, p):
+    cand = sorted(pool, key=lambda c: abs(c.period - p))
+    return cand[0] if cand else None
 
-# Classement des paires par rendement (asym=True, hausse seule)
-res = analyze_combinations(prices, cyc, top_n_per_size=5, asym=True)
-print("\n--- results (asym) : cycles simples et paires proposés ---")
-for k in (1, 2, 3):
-    for cr in res.get(k, [])[:6]:
-        print(f"   size{k}: {cr.label:28} rdt {cr.total_return_pct:+.0f}% · "
-              f"{cr.n_zones} zones · {cr.hit_rate:.0f}%")
+c80, c177 = _closest(pool_sym, 80), _closest(pool_sym, 177)
+cr = _build_combo(prices, [c80, c177])
+print(f"\nCombo direct {c80.period}+{c177.period} : "
+      f"rdt {cr.total_return_pct:+.0f}% · {cr.n_zones} zones · réussite {cr.hit_rate:.0f}%")
+
+def _show(res, tag):
+    print(f"\n=== {tag} : top pairs (results[2]) ===")
+    for c in res.get(2, [])[:10]:
+        print(f"   {c.label:20} rdt {c.total_return_pct:+.0f}% · {c.n_zones} zones · {c.hit_rate:.0f}%")
+    # 80+177 est-il présent dans results[2] ?
+    def _has(c):
+        ps = sorted(c.periods)
+        return len(ps) == 2 and abs(ps[0]-80) <= 6 and abs(ps[1]-177) <= 6
+    hit = [c for c in res.get(2, []) if _has(c)]
+    print(f"   -> 80+177 dans results[2] ? {'OUI: '+hit[0].label if hit else 'NON'}")
+
+res0 = analyze_combinations(prices, cyc, top_n_per_size=5, asym=False)
+_show(res0, "SANS --asym (origine)")
+res1 = analyze_combinations(prices, cyc, top_n_per_size=5, asym=True)
+_show(res1, "AVEC --asym")
