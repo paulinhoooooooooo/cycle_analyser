@@ -96,6 +96,7 @@ def _summary_html(
         ph_label, ph_bg, ph_fg = _combo_phase(c)
         combo_rows += f"""
         <tr>
+          <td class="chk-cell"><input type="checkbox" class="mask-chk" title="Masquer cette proposition"></td>
           <td><span class="rank-badge">#{i}</span></td>
           <td style="font-weight:600;color:#fff">{c.label}</td>
           <td><span class="badge" style="background:{ph_bg}22;border:1px solid {ph_fg};color:{ph_fg}">{ph_label}</span></td>
@@ -116,6 +117,7 @@ def _summary_html(
         short_col2 = "color:var(--green)" if sc.short_compound_return_pct >= 0 else "color:var(--red)"
         single_rows += f"""
         <tr>
+          <td class="chk-cell"><input type="checkbox" class="mask-chk" title="Masquer cette proposition"></td>
           <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{_cycle_period_label(ci)}</span></td>
           <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{label}</span></td>
           <td><span class="ret-val" data-simple="{bull_s}" data-compound="{bull_c}" style="{bull_col}">{bull_s}</span></td>
@@ -125,14 +127,17 @@ def _summary_html(
         </tr>"""
 
     return f"""
-<h2 style="margin-top:4px">Résumé — Meilleurs signaux</h2>
+<h2 style="margin-top:4px">Résumé — Meilleurs signaux
+  <span style="font-size:11px;font-weight:400;color:var(--text2)">
+    &nbsp;— cochez la case d'une proposition pour la masquer (décochez pour la réafficher)
+  </span></h2>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
   <div class="card" style="padding:14px">
     <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;
                 color:var(--text2);margin-bottom:10px">Top 3 meilleures combinaisons</div>
     <table>
       <thead><tr>
-        <th>#</th><th>Combinaison</th><th>Phase actuelle</th>
+        <th class="chk-cell"></th><th>#</th><th>Combinaison</th><th>Phase actuelle</th>
         <th>Long ↑</th><th>Short ↓</th>
         <th>% réus. L</th><th>% réus. S</th>
       </tr></thead>
@@ -144,7 +149,7 @@ def _summary_html(
                 color:var(--text2);margin-bottom:10px">Top 3 Cycles simples</div>
     <table>
       <thead><tr>
-        <th>Cycle</th><th>Phase</th>
+        <th class="chk-cell"></th><th>Cycle</th><th>Phase</th>
         <th>Long ↑</th><th>Short ↓</th>
         <th>% réus. L</th><th>% réus. S</th>
       </tr></thead>
@@ -553,6 +558,12 @@ def generate_report(
                                letter-spacing: .06em; margin-bottom: 2px; }}
   .perf-banner .perf-detail {{ font-size: 13px; color: var(--text); }}
   .perf-banner .sep {{ width: 1px; height: 40px; background: var(--border); }}
+  /* Masquage des propositions du résumé (case à cocher par ligne). */
+  .chk-cell {{ width: 26px; text-align: center; padding-left: 6px; padding-right: 4px; }}
+  .mask-chk {{ cursor: pointer; accent-color: var(--blue); }}
+  tr.masked > td:not(.chk-cell) {{ display: none; }}
+  tr.masked > td.chk-cell {{ opacity: .45; }}
+  tr.masked:hover {{ background: transparent; }}
 </style>
 </head>
 <body>
@@ -569,6 +580,16 @@ function switchTab(mode, btn) {{
     el.textContent = el.dataset[mode];
   }});
 }}
+// Case à cocher du résumé : cocher masque la proposition (ligne réduite à la
+// case), décocher la ré-affiche.
+document.addEventListener('DOMContentLoaded', function () {{
+  document.querySelectorAll('.mask-chk').forEach(function (cb) {{
+    cb.addEventListener('change', function () {{
+      var tr = cb.closest('tr');
+      if (tr) tr.classList.toggle('masked', cb.checked);
+    }});
+  }});
+}});
 </script>
 
 <h1>Analyse des Cycles — {ticker_info.get('name', ticker)} ({ticker.upper()})</h1>
