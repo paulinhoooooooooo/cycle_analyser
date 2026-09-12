@@ -1,0 +1,69 @@
+name: Scan cycles parfaits (Long+Short 100%)
+
+# Cherche des actions qui, comme le BTC, ont des cycles PARFAITS : 100 % de
+# réussite en LONG **et** en SHORT, avec un gros rendement. Résultat dans le log.
+on:
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Symboles Yahoo (espaces/virgules). Vide = liste par défaut (crypto + valeurs cycliques)."
+        required: false
+        default: ""
+        type: string
+      start:
+        description: "Date de début FIXE (JJ/MM/AAAA). Vide = fenêtre glissante 'period'."
+        required: false
+        default: ""
+        type: string
+      period:
+        description: "Fenêtre glissante si 'start' est vide."
+        required: false
+        default: "15y"
+        type: string
+      min_hit:
+        description: "Réussite minimale Long ET Short (100 = parfait)."
+        required: false
+        default: "100"
+        type: string
+      min_zones:
+        description: "Zones minimales de CHAQUE côté (≥ répétitions du cycle)."
+        required: false
+        default: "3"
+        type: string
+      max_period:
+        description: "Période max en barres (1600 ≈ cycle 4 ans type BTC)."
+        required: false
+        default: "1600"
+        type: string
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Dépendances
+        run: pip install numpy pandas yfinance scipy requests
+      - name: Scan
+        env:
+          # Liste par défaut : crypto (meilleurs analogues du BTC) + valeurs très
+          # cycliques (mines, énergie, semis, émergents). Écrasée si 'tickers' fourni.
+          DEFAULT_TICKERS: >-
+            ETH-USD LTC-USD XRP-USD BCH-USD ETC-USD ADA-USD BNB-USD DOGE-USD
+            LINK-USD XMR-USD XLM-USD TRX-USD
+            GDX XLE XME EWZ FCX NEM MU SOXX NVDA AMD URA MRNA ARKK COIN MSTR TSLA
+          TICKERS: ${{ inputs.tickers }}
+          SCREEN_START: ${{ inputs.start }}
+          SCREEN_PERIOD: ${{ inputs.period }}
+          MIN_HIT: ${{ inputs.min_hit }}
+          MIN_ZONES: ${{ inputs.min_zones }}
+          MAX_PERIOD: ${{ inputs.max_period }}
+        run: |
+          if [ -z "$TICKERS" ]; then export TICKERS="$DEFAULT_TICKERS"; fi
+          python scan_perfect.py
