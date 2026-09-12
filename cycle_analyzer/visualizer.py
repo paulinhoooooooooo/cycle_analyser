@@ -496,9 +496,24 @@ def plot_single_cycle(
         bars_ahead = nb - (N - 1)
         fut_date = dates[-1] + timedelta(days=int(round(bars_ahead * _avg)))
         cal_days = int(round(bars_ahead * _avg))
+
+        # (c) FIN du cycle HAUSSIER : fin du cycle EN COURS si on est actuellement
+        # haussier, sinon fin du PROCHAIN cycle haussier. Une barre de fin de hausse
+        # vérifie bull(t) et non bull(t+1), avec bull(t) = ((t-phi)%P) < U.
+        def _bull_at(t: int) -> bool:
+            return ((t - phia) % Pa) < Ua
+        is_bull_now = _bull_at(N - 1)
+        pe = None
+        for _t in range(N - 1, N - 1 + 2 * Pa + 2):
+            if _bull_at(_t) and not _bull_at(_t + 1):
+                pe = _t
+                break
         pad_a = max(5, int(Pa * 0.12))
-        ax_price.set_xlim(0, nb + pad_a)
-        ax_osc.set_xlim(0, nb + pad_a)
+        _right = max(nb, pe if pe is not None else nb)
+        ax_price.set_xlim(0, _right + pad_a)
+        ax_osc.set_xlim(0, _right + pad_a)
+
+        # Marqueur : prochain début HAUSSIER (vert).
         ax_price.axvline(nb, color=GREEN, linewidth=1.4, linestyle="--", alpha=0.85, zorder=5)
         _yb = ymin + (ymax - ymin) * 0.45
         ax_price.text(
@@ -507,6 +522,23 @@ def plot_single_cycle(
             color=GREEN, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
             bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL, edgecolor=GREEN, alpha=0.9),
         )
+
+        # Marqueur : FIN de la hausse (pic, rouge). Fin du cycle actuel si haussier,
+        # sinon fin du prochain cycle haussier.
+        if pe is not None:
+            peak_bars = pe - (N - 1)
+            peak_date = dates[-1] + timedelta(days=int(round(peak_bars * _avg)))
+            peak_cal = int(round(peak_bars * _avg))
+            _title = ("↓ Fin du cycle HAUSSIER actuel" if is_bull_now
+                      else "↓ Fin du prochain cycle HAUSSIER")
+            ax_price.axvline(pe, color=RED, linewidth=1.4, linestyle="--", alpha=0.85, zorder=5)
+            _yp = ymin + (ymax - ymin) * 0.72
+            ax_price.text(
+                pe + pad_a * 0.15, _yp,
+                f"{_title}\n{peak_date.strftime('%d/%m/%Y')}\n(dans {peak_cal} j)",
+                color=RED, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL, edgecolor=RED, alpha=0.9),
+            )
 
         import warnings as _w
         with _w.catch_warnings():
@@ -683,27 +715,70 @@ def plot_combination(
     comb_ext = _combined_bull_mask_extended(prices, combo, _horizon)
     _bars_ahead = _next_combined_bull_start(comb_ext, N)
     _avg = (dates[-1] - dates[0]).days / max(N - 1, 1)
-    if _bars_ahead is not None:
-        from datetime import timedelta
-        nb = N - 1 + _bars_ahead
-        nb_end = nb
-        while nb_end < len(comb_ext) and comb_ext[nb_end]:
-            nb_end += 1
-        pad_c = max(8, int(max(_periods) * 0.10))
-        end = min(max(nb_end, nb) + pad_c + 1, len(comb_ext))
-        fz_end = min(nb_end, end - 1)
+    from datetime import timedelta
+    pad_c = max(8, int(max(_periods) * 0.10))
+
+    def _combo_end_marker(bar_end: int, current: bool):
+        """Marqueur daté (rouge) de FIN de zone haussière combinée."""
+        _b = bar_end - (N - 1)
+        _d = dates[-1] + timedelta(days=int(round(_b * _avg)))
+        _cal = int(round(_b * _avg))
+        _txt = ("↓ Fin de la zone HAUSSIÈRE actuelle" if current
+                else "↓ Fin de la zone HAUSSIÈRE")
+        for ax in _all_axes:
+            ax.axvline(bar_end, color=RED, linewidth=1.2, linestyle="--", alpha=0.8, zorder=5)
+        ax_price.text(
+            bar_end + pad_c * 0.12, ymin + (ymax - ymin) * 0.74,
+            f"{_txt}\n{_d.strftime('%d/%m/%Y')}\n(dans {_cal} j)",
+            color=RED, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL, edgecolor=RED, alpha=0.9),
+        )
+        return _d
+
+    # Si on est ACTUELLEMENT en zone haussière combinée, on montre d'abord la FIN
+    # de cette zone en cours (bande + marqueur daté rouge).
+    _cur_end = None
+    if bool(comb_ext[N - 1]):
+        _ce = N - 1
+        while _ce + 1 < len(comb_ext) and comb_ext[_ce + 1]:
+            _ce += 1
+        _cur_end = _ce
+
+    if _bars_ahead is not None or _cur_end is not None:
+        nb = (N - 1 + _bars_ahead) if _bars_ahead is not None else None
+        nb_end = None
+        if nb is not None:
+            nb_end = nb
+            while nb_end < len(comb_ext) and comb_ext[nb_end]:
+                nb_end += 1
+            nb_end -= 1                       # dernière barre haussière de la zone
+        _far = max(x for x in (_cur_end, nb, nb_end) if x is not None)
+        end = min(_far + pad_c + 1, len(comb_ext))
         for ax in _all_axes:
             ax.set_xlim(0, end - 1)
-            ax.axvspan(nb, fz_end, color=GREEN_FILL, alpha=0.20, zorder=0)   # zone future
-            ax.axvline(nb, color=GREEN, linewidth=1.2, linestyle="--", alpha=0.8, zorder=5)
-        fdate = dates[-1] + timedelta(days=int(round(_bars_ahead * _avg)))
-        cal_d = int(round(_bars_ahead * _avg))
-        ax_price.text(
-            nb + pad_c * 0.12, ymin + (ymax - ymin) * 0.5,
-            f"↑ Prochaine zone HAUSSIÈRE\n{fdate.strftime('%d/%m/%Y')}\n(dans {cal_d} j)",
-            color=GREEN, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
-            bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL, edgecolor=GREEN, alpha=0.9),
-        )
+        # Zone haussière EN COURS : bande + fin datée.
+        if _cur_end is not None:
+            fz_cur = min(_cur_end, end - 1)
+            for ax in _all_axes:
+                ax.axvspan(N - 1, fz_cur, color=GREEN_FILL, alpha=0.20, zorder=0)
+            _combo_end_marker(_cur_end, current=True)
+        # PROCHAINE zone haussière : bande + début vert daté + fin datée rouge.
+        if nb is not None:
+            fz_end = min(nb_end if nb_end is not None else nb, end - 1)
+            for ax in _all_axes:
+                ax.axvspan(nb, fz_end, color=GREEN_FILL, alpha=0.20, zorder=0)
+                ax.axvline(nb, color=GREEN, linewidth=1.2, linestyle="--", alpha=0.8, zorder=5)
+            fdate = dates[-1] + timedelta(days=int(round(_bars_ahead * _avg)))
+            cal_d = int(round(_bars_ahead * _avg))
+            ax_price.text(
+                nb + pad_c * 0.12, ymin + (ymax - ymin) * 0.5,
+                f"↑ Prochaine zone HAUSSIÈRE\n{fdate.strftime('%d/%m/%Y')}\n(dans {cal_d} j)",
+                color=GREEN, fontsize=7, ha="left", va="center", fontweight="bold", zorder=6,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL, edgecolor=GREEN, alpha=0.9),
+            )
+            # Fin de la prochaine zone (sauf si elle coïncide avec la zone en cours).
+            if nb_end is not None and nb_end != _cur_end:
+                _combo_end_marker(nb_end, current=False)
 
     import warnings
     with warnings.catch_warnings():
