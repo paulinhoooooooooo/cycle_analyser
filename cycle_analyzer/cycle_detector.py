@@ -370,7 +370,7 @@ def _anchor_troughs(prices: np.ndarray, P: int, max_anchors: int = 12) -> List[i
 
 def detect_anchored_cycle(prices: np.ndarray, period: float,
                           u_lo: float = 0.20, u_hi: float = 0.88,
-                          both_sides: bool = False):
+                          both_sides: bool = False, symmetric: bool = False):
     """CYCLE RÉGULIER ANCRÉ. Cherche conjointement le découpage U (hausse) /
     D (baisse) ET l'ANCRAGE `a` (un vrai plus-bas d'où le cycle est projeté vers
     l'avant) qui maximise le rendement.
@@ -393,10 +393,16 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
         return None
     p = np.asarray(prices, dtype=float)
     anchors = _anchor_troughs(p, P)
-    lo, hi = max(2, int(P * u_lo)), min(P - 2, int(P * u_hi))
-    step = max(1, P // 80)
+    if symmetric:
+        # Mode --ancrage (classique) : cycle SYMÉTRIQUE (50 % ↑ / 50 % ↓),
+        # on n'optimise QUE l'ancrage sur un vrai creux, pas le découpage.
+        u_range = [P // 2]
+    else:
+        lo, hi = max(2, int(P * u_lo)), min(P - 2, int(P * u_hi))
+        step = max(1, P // 80)
+        u_range = range(lo, hi + 1, step)
     best = None
-    for U in range(lo, hi + 1, step):
+    for U in u_range:
         for a in anchors:
             up_ret = dn_gain = 0.0
             up_hits = up_n = dn_hits = dn_n = 0
@@ -447,7 +453,8 @@ def _anchored_ci(prices: np.ndarray, period: int, b: dict) -> "CycleInfo":
 
 
 def build_anchored_pool(prices: np.ndarray, periods, per_bucket: int = 7,
-                        max_add: int = 24, both_sides: bool = False) -> List["CycleInfo"]:
+                        max_add: int = 24, both_sides: bool = False,
+                        symmetric: bool = False) -> List["CycleInfo"]:
     """Cycles réguliers ANCRÉS (objectif long-short) pour les périodes données.
     Une seule meilleure variante par période. **Diversifié par DURÉE** : sans ça,
     les grands cycles (rendement absolu énorme) monopolisent le pool et éjectent
@@ -460,7 +467,8 @@ def build_anchored_pool(prices: np.ndarray, periods, per_bucket: int = 7,
         if p in seen or p < 15:
             continue
         seen.add(p)
-        b = detect_anchored_cycle(prices, p, both_sides=both_sides)
+        b = detect_anchored_cycle(prices, p, both_sides=both_sides,
+                                  symmetric=symmetric)
         if b is None:
             continue
         scored.append((b["val"], _anchored_ci(prices, p, b)))

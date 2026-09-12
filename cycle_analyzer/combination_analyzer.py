@@ -592,6 +592,7 @@ def analyze_combinations(
     max_period: int = None,
     both_sides: bool = False,
     asym: bool = False,
+    anchored: bool = False,
 ) -> Dict:
     """
     Returns combinations grouped by size, with separate long and short rankings:
@@ -638,7 +639,12 @@ def analyze_combinations(
     #       l'ancrage), pour capter aussi les grands cycles type halving.
     # Périodes candidates pour (2) = celles trouvées + une bande de périodes
     # LONGUES que la FFT peut rater. On AJOUTE, on ne remplace pas.
-    if asym:
+    # --asym construit des cycles ancrés ASYMÉTRIQUES (U/D optimisés).
+    # --ancrage (mode classique) construit des cycles ancrés SYMÉTRIQUES
+    #   (50 % ↑ / 50 % ↓) : on n'optimise QUE le décalage du début sur un vrai
+    #   creux, pas le découpage — même effet de décalage qu'en --asym mais en
+    #   gardant les cycles symétriques.
+    if asym or anchored:
         _cap = max_period if max_period is not None else n_bars // 2
         _periods = {c.period for c in pool}
         for _p in range(300, min(_cap, n_bars // 2) + 1, 60):
@@ -646,8 +652,10 @@ def analyze_combinations(
         _periods = sorted(p for p in _periods if 15 <= p < _cap)
         # Par défaut on optimise l'ancrage sur la HAUSSE seule ; le short n'entre
         # dans le choix que si --bilateral (both_sides) est demandé.
+        # symmetric=True quand --ancrage sans --asym → cycles 50/50.
         pool = pool + build_anchored_pool(prices, _periods, per_bucket=5,
-                                          max_add=16, both_sides=both_sides)
+                                          max_add=16, both_sides=both_sides,
+                                          symmetric=(anchored and not asym))
 
     # Le pool contient-il des cycles ANCRÉS ? Si oui, on garantira que les combos
     # CLASSIQUES apparaissent aussi (sinon les ancrés les noient).

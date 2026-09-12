@@ -250,6 +250,12 @@ Exemples :
                              "baisse DIFFÉRENTES (ex: 120 barres ↑ puis 40 ↓), au lieu du seul "
                              "50/50 des sinusoïdes. Permet de capter des rythmes type Bitcoin "
                              "(longue hausse / courte baisse). Notés '↑U/↓D' dans les cycles.")
+    parser.add_argument("--ancrage", action="store_true",
+                        help="Mode CLASSIQUE (cycles SYMÉTRIQUES 50/50) mais avec DÉCALAGE "
+                             "du début : chaque cycle est ancré sur un vrai plus-bas (rien avant "
+                             "l'ancrage), le décalage retenu étant celui qui maximise la hausse — "
+                             "comme --asym pour le décalage, mais sans changer le découpage 50/50. "
+                             "Sans effet avec --asym (qui décale déjà le début).")
     parser.add_argument("--court", nargs="?", type=int, const=200, default=None, metavar="JOURS",
                         help="Ne garder que les combinaisons dont TOUS les cycles font moins de "
                              "JOURS barres (défaut 200 si aucune valeur). "
@@ -596,7 +602,7 @@ Exemples :
                                             recency_halflife=_recency, min_hit=_min_hit,
                                             min_zones=args.zone, min_return=args.rendement,
                                             max_period=args.court, both_sides=args.bilateral,
-                                            asym=args.asym)
+                                            asym=args.asym, anchored=args.ancrage)
         n_found = sum(len(v) for v in combinations.values())
         progress.update(t3, description=f"[green]✓[/green] {n_found} meilleures combinaisons trouvées")
         progress.stop_task(t3)
@@ -615,6 +621,8 @@ Exemples :
             _opts.append("Deux sens : seuils exigés en LONG ET en SHORT (--bilateral)")
         if args.asym:
             _opts.append("Cycles asymétriques activés (--asym)")
+        if args.ancrage and not args.asym:
+            _opts.append("Décalage du début sur un vrai creux, cycles 50/50 (--ancrage)")
         if args.court is not None:
             _opts.append(f"Cycles < {args.court} jours (--court)")
         html = generate_report(
