@@ -81,6 +81,16 @@ def _cycle_row_html(c: CycleInfo) -> str:
     </tr>"""
 
 
+def _combo_slug(periods) -> str:
+    """Identifiant stable d'une combinaison = ses périodes triées, ex '47-119'.
+    Sert à relier une case à cocher du récapitulatif à la carte-graphique
+    correspondante plus bas dans le rapport."""
+    try:
+        return "-".join(str(int(round(float(p)))) for p in sorted(periods))
+    except Exception:
+        return ""
+
+
 def _summary_html(
     top_combos: List[CombinationResult],
     top_singles: List[tuple],          # List of (CycleInfo, CombinationResult)
@@ -96,7 +106,6 @@ def _summary_html(
         ph_label, ph_bg, ph_fg = _combo_phase(c)
         combo_rows += f"""
         <tr>
-          <td class="chk-cell"><input type="checkbox" class="mask-chk" title="Masquer cette proposition"></td>
           <td><span class="rank-badge">#{i}</span></td>
           <td style="font-weight:600;color:#fff">{c.label}</td>
           <td><span class="badge" style="background:{ph_bg}22;border:1px solid {ph_fg};color:{ph_fg}">{ph_label}</span></td>
@@ -117,7 +126,6 @@ def _summary_html(
         short_col2 = "color:var(--green)" if sc.short_compound_return_pct >= 0 else "color:var(--red)"
         single_rows += f"""
         <tr>
-          <td class="chk-cell"><input type="checkbox" class="mask-chk" title="Masquer cette proposition"></td>
           <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{_cycle_period_label(ci)}</span></td>
           <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{label}</span></td>
           <td><span class="ret-val" data-simple="{bull_s}" data-compound="{bull_c}" style="{bull_col}">{bull_s}</span></td>
@@ -127,17 +135,14 @@ def _summary_html(
         </tr>"""
 
     return f"""
-<h2 style="margin-top:4px">Résumé — Meilleurs signaux
-  <span style="font-size:11px;font-weight:400;color:var(--text2)">
-    &nbsp;— cochez la case d'une proposition pour la masquer (décochez pour la réafficher)
-  </span></h2>
+<h2 style="margin-top:4px">Résumé — Meilleurs signaux</h2>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
   <div class="card" style="padding:14px">
     <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;
                 color:var(--text2);margin-bottom:10px">Top 3 meilleures combinaisons</div>
     <table>
       <thead><tr>
-        <th class="chk-cell"></th><th>#</th><th>Combinaison</th><th>Phase actuelle</th>
+        <th>#</th><th>Combinaison</th><th>Phase actuelle</th>
         <th>Long ↑</th><th>Short ↓</th>
         <th>% réus. L</th><th>% réus. S</th>
       </tr></thead>
@@ -149,7 +154,7 @@ def _summary_html(
                 color:var(--text2);margin-bottom:10px">Top 3 Cycles simples</div>
     <table>
       <thead><tr>
-        <th class="chk-cell"></th><th>Cycle</th><th>Phase</th>
+        <th>Cycle</th><th>Phase</th>
         <th>Long ↑</th><th>Short ↓</th>
         <th>% réus. L</th><th>% réus. S</th>
       </tr></thead>
@@ -199,9 +204,10 @@ def _recap_table_html(combos: List[CombinationResult],
         avg_short = (sum(-z.return_pct for z in c.bearish_zones) / n_short) if n_short else 0.0
         avg_long_col = "var(--green)" if avg_long >= 0 else "var(--red)"
         avg_short_col = "var(--green)" if avg_short >= 0 else "var(--red)"
+        _slug = _combo_slug(c.periods)
         rows += f"""
         <tr>
-          <td class="chk-cell"><input type="checkbox" class="mask-chk" title="Masquer cette proposition"></td>
+          <td class="chk-cell"><input type="checkbox" class="mask-chk" data-combo="{_slug}" title="Masquer le graphique de cette combinaison plus bas"></td>
           <td style="font-weight:600;color:#fff">{c.label}</td>
           <td style="color:{long_col}">{long_ret:+.1f}%</td>
           <td style="color:{short_col}">{short_ret:+.1f}%</td>
@@ -214,12 +220,12 @@ def _recap_table_html(combos: List[CombinationResult],
     return f"""
 <h2>{title}
   <span style="font-size:11px;font-weight:400;color:var(--text2)">
-    &nbsp;— cochez la case d'une ligne pour la masquer (décochez pour la réafficher)
+    &nbsp;— cochez une combinaison pour masquer son graphique plus bas (la ligne reste). Case en tête = tout cocher / décocher.
   </span></h2>
 <div class="card">
   <table>
     <thead><tr>
-      <th class="chk-cell"></th><th>Cycles utilisés</th><th>Long ↑</th><th>Short ↓</th>
+      <th class="chk-cell"><input type="checkbox" class="mask-all" title="Tout cocher / décocher"></th><th>Cycles utilisés</th><th>Long ↑</th><th>Short ↓</th>
       <th>% réussite long</th><th>% réussite short</th>
       <th>Zones (L / S)</th><th>Rdt moy/zone L</th><th>Rdt moy/zone S</th>
     </tr></thead>
@@ -257,7 +263,7 @@ def _combo_card_short_html(combo: CombinationResult, img_b64: str, rank: int) ->
     ph_label, ph_bg, ph_fg = _combo_phase(combo)
 
     return f"""
-    <div class="card" style="border-left:3px solid #f85149">
+    <div class="card combo-card" data-combo="{_combo_slug(combo.periods)}" style="border-left:3px solid #f85149">
       <div class="card-header">
         <span class="rank-badge">#{rank}</span>
         <span class="combo-title">Cycles : {combo.label}</span>
@@ -313,7 +319,7 @@ def _combo_card_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
       </div>"""
 
     return f"""
-    <div class="card">
+    <div class="card combo-card" data-combo="{_combo_slug(combo.periods)}">
       <div class="card-header">
         <span class="rank-badge">#{rank}</span>
         <span class="combo-title">Cycles : {combo.label}</span>
@@ -432,7 +438,7 @@ def generate_report(
                 f'<span class="stat-chip green">Stab: {c.stability:.2f}</span>'
             )
         top3_html += f"""
-        <div class="card">
+        <div class="card combo-card" data-combo="{_combo_slug(sc.periods)}">
           <div class="card-header">
             <span class="rank-badge">#{_rank}</span>
             <span class="combo-title">{_cycle_title(c)}</span>
@@ -562,12 +568,11 @@ def generate_report(
                                letter-spacing: .06em; margin-bottom: 2px; }}
   .perf-banner .perf-detail {{ font-size: 13px; color: var(--text); }}
   .perf-banner .sep {{ width: 1px; height: 40px; background: var(--border); }}
-  /* Masquage des propositions du résumé (case à cocher par ligne). */
+  /* Récapitulatif : la case coche la combinaison → masque SON graphique plus bas
+     (la ligne du tableau, elle, reste toujours affichée). */
   .chk-cell {{ width: 26px; text-align: center; padding-left: 6px; padding-right: 4px; }}
-  .mask-chk {{ cursor: pointer; accent-color: var(--blue); }}
-  tr.masked > td:not(.chk-cell) {{ display: none; }}
-  tr.masked > td.chk-cell {{ opacity: .45; }}
-  tr.masked:hover {{ background: transparent; }}
+  .mask-chk, .mask-all {{ cursor: pointer; accent-color: var(--blue); }}
+  .combo-card.chart-off {{ display: none; }}
 </style>
 </head>
 <body>
@@ -584,13 +589,34 @@ function switchTab(mode, btn) {{
     el.textContent = el.dataset[mode];
   }});
 }}
-// Case à cocher du résumé : cocher masque la proposition (ligne réduite à la
-// case), décocher la ré-affiche.
+// Récapitulatif : cocher une combinaison masque SON graphique plus bas (la
+// ligne du tableau reste). La case en tête d'un tableau coche/décoche tout.
 document.addEventListener('DOMContentLoaded', function () {{
+  function applyMask(cb) {{
+    var slug = cb.dataset.combo;
+    if (!slug) return;
+    // Synchronise toutes les cases de MÊME combinaison (elle peut figurer dans
+    // plusieurs tableaux récapitulatifs).
+    document.querySelectorAll('.mask-chk[data-combo="' + slug + '"]').forEach(function (o) {{
+      o.checked = cb.checked;
+    }});
+    // Masque / réaffiche toutes les cartes-graphiques de cette combinaison.
+    document.querySelectorAll('.combo-card[data-combo="' + slug + '"]').forEach(function (card) {{
+      card.classList.toggle('chart-off', cb.checked);
+    }});
+  }}
   document.querySelectorAll('.mask-chk').forEach(function (cb) {{
-    cb.addEventListener('change', function () {{
-      var tr = cb.closest('tr');
-      if (tr) tr.classList.toggle('masked', cb.checked);
+    cb.addEventListener('change', function () {{ applyMask(cb); }});
+  }});
+  // Case « tout cocher / décocher » : agit sur toutes les lignes de SON tableau.
+  document.querySelectorAll('.mask-all').forEach(function (master) {{
+    master.addEventListener('change', function () {{
+      var table = master.closest('table');
+      if (!table) return;
+      table.querySelectorAll('.mask-chk').forEach(function (cb) {{
+        cb.checked = master.checked;
+        applyMask(cb);
+      }});
     }});
   }});
 }});
