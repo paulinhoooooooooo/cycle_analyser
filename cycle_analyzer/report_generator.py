@@ -201,6 +201,7 @@ def _recap_table_html(combos: List[CombinationResult],
         avg_short_col = "var(--green)" if avg_short >= 0 else "var(--red)"
         rows += f"""
         <tr>
+          <td class="chk-cell"><input type="checkbox" class="mask-chk" title="Masquer cette proposition"></td>
           <td style="font-weight:600;color:#fff">{c.label}</td>
           <td style="color:{long_col}">{long_ret:+.1f}%</td>
           <td style="color:{short_col}">{short_ret:+.1f}%</td>
@@ -211,11 +212,14 @@ def _recap_table_html(combos: List[CombinationResult],
           <td style="color:{avg_short_col}">{avg_short:+.1f}%</td>
         </tr>"""
     return f"""
-<h2>{title}</h2>
+<h2>{title}
+  <span style="font-size:11px;font-weight:400;color:var(--text2)">
+    &nbsp;— cochez la case d'une ligne pour la masquer (décochez pour la réafficher)
+  </span></h2>
 <div class="card">
   <table>
     <thead><tr>
-      <th>Cycles utilisés</th><th>Long ↑</th><th>Short ↓</th>
+      <th class="chk-cell"></th><th>Cycles utilisés</th><th>Long ↑</th><th>Short ↓</th>
       <th>% réussite long</th><th>% réussite short</th>
       <th>Zones (L / S)</th><th>Rdt moy/zone L</th><th>Rdt moy/zone S</th>
     </tr></thead>
