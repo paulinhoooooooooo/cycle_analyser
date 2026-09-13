@@ -183,11 +183,16 @@ def _summary_html(
 
 
 def _recap_table_html(combos: List[CombinationResult],
-                      title: str = "Récapitulatif des combinaisons") -> str:
+                      title: str = "Récapitulatif des combinaisons",
+                      charted: dict = None, anchor_id: str = None) -> str:
     """Tableau récapitulatif compact de toutes les combinaisons affichées :
-    cycles utilisés, rendement long & short, % de réussite long & short."""
+    cycles utilisés, rendement long & short, % de réussite long & short.
+    `charted` : dict slug → id d'ancre de sa carte-graphique → la ligne devient
+    un lien cliquable qui y saute. `anchor_id` : ancre HTML posée sur le titre
+    (cible du bouton « retour au récapitulatif »)."""
     if not combos:
         return ""
+    charted = charted or {}
     # Déduplication des QUASI-DOUBLONS (cycles à ~18% près, ex: 201+136 / 199+136).
     # Une combinaison n'est masquée que si un quasi-jumeau déjà gardé la DOMINE à la
     # fois sur le long (rendement, réussite, zones) ET sur le short — sinon elle
@@ -223,10 +228,14 @@ def _recap_table_html(combos: List[CombinationResult],
         avg_long_col = "var(--green)" if avg_long >= 0 else "var(--red)"
         avg_short_col = "var(--green)" if avg_short >= 0 else "var(--red)"
         _slug = _combo_slug(c.periods)
+        _lab = _combo_days_label(c)
+        _anchor = charted.get(_slug)
+        _cell = (f'<a class="combo-link" href="#{_anchor}" data-combo="{_slug}" '
+                 f'title="Aller au graphique">{_lab}</a>') if _anchor else _lab
         rows += f"""
         <tr>
           <td class="chk-cell"><input type="checkbox" class="mask-chk" data-combo="{_slug}" title="Masquer le graphique de cette combinaison plus bas"></td>
-          <td style="font-weight:600;color:#fff">{_combo_days_label(c)}</td>
+          <td style="font-weight:600;color:#fff">{_cell}</td>
           <td style="color:{long_col}">{long_ret:+.1f}%</td>
           <td style="color:{short_col}">{short_ret:+.1f}%</td>
           <td style="color:var(--text2)">{c.hit_rate:.0f}%</td>
@@ -235,11 +244,12 @@ def _recap_table_html(combos: List[CombinationResult],
           <td style="color:{avg_long_col}">{avg_long:+.1f}%</td>
           <td style="color:{avg_short_col}">{avg_short:+.1f}%</td>
         </tr>"""
+    _idattr = f' id="{anchor_id}"' if anchor_id else ""
     return f"""
-<h2>{title}
+<h2{_idattr}>{title}
   <span style="font-size:11px;font-weight:400;color:var(--text2)">
-    &nbsp;— cochez une combinaison pour masquer son graphique plus bas (la ligne reste). Case en tête = tout cocher / décocher.
-  </span></h2>
+    &nbsp;— cliquez une combinaison pour aller à son graphique · cochez la case pour masquer le graphique · case en tête = tout cocher.
+  </span></h2>""" + f"""
 <div class="card">
   <table>
     <thead><tr>
@@ -281,7 +291,7 @@ def _combo_card_short_html(combo: CombinationResult, img_b64: str, rank: int) ->
     ph_label, ph_bg, ph_fg = _combo_phase(combo)
 
     return f"""
-    <div class="card combo-card" data-combo="{_combo_slug(combo.periods)}" style="border-left:3px solid #f85149">
+    <div class="card combo-card" id="cs-{_combo_slug(combo.periods)}" data-combo="{_combo_slug(combo.periods)}" style="border-left:3px solid #f85149">
       <div class="card-header">
         <span class="rank-badge">#{rank}</span>
         <span class="combo-title">Cycles : {_combo_days_label(combo)}</span>
@@ -337,7 +347,7 @@ def _combo_card_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
       </div>"""
 
     return f"""
-    <div class="card combo-card" data-combo="{_combo_slug(combo.periods)}">
+    <div class="card combo-card" id="c-{_combo_slug(combo.periods)}" data-combo="{_combo_slug(combo.periods)}">
       <div class="card-header">
         <span class="rank-badge">#{rank}</span>
         <span class="combo-title">Cycles : {_combo_days_label(combo)}</span>
@@ -377,12 +387,11 @@ def generate_report(
     _hist_days = int((dates[-1] - dates[0]).days)
     _DPB = _hist_days / max(n_bars - 1, 1)
 
-    # Sections avec GRAPHIQUES : plafonnées à _CHART_CAP par catégorie. Le récap
-    # (tableaux plus bas, sans image) montre TOUTES les combinaisons, lui.
-    _CHART_CAP = 8
-    sec2 = combinations.get(2, [])[:_CHART_CAP]
-    sec3 = combinations.get(3, [])[:_CHART_CAP]
-    secCourt = combinations.get("court", [])[:_CHART_CAP]
+    # Sections avec GRAPHIQUES : on trace TOUTES les combinaisons du récapitulatif
+    # (plus de plafond), pour que chaque ligne cliquable ait bien son graphique.
+    sec2 = combinations.get(2, [])
+    sec3 = combinations.get(3, [])
+    secCourt = combinations.get("court", [])
 
     short_combos = combinations.get("short_2", []) + combinations.get("short_3", [])
     # 3 meilleures combinaisons SHORT (par rendement short), dédupliquées
@@ -462,7 +471,7 @@ def generate_report(
                 f'<span class="stat-chip green">Stab: {c.stability:.2f}</span>'
             )
         top3_html += f"""
-        <div class="card combo-card" data-combo="{_combo_slug(sc.periods)}">
+        <div class="card combo-card" id="c-{_combo_slug(sc.periods)}" data-combo="{_combo_slug(sc.periods)}">
           <div class="card-header">
             <span class="rank-badge">#{_rank}</span>
             <span class="combo-title">{_cycle_title(c)}</span>
@@ -505,11 +514,23 @@ def generate_report(
     # Short section : les 3 MEILLEURES combinaisons pour le short (calculées plus haut)
     combos_html += _section_html(short_top, "Top 3 — Meilleures combinaisons pour le SHORT ↓", short_mode=True)
 
+    # Chaque combinaison graphée → ancre de sa carte (id). On PRIVILÉGIE la carte
+    # LONG/simple (id « c-… ») ; les combos uniquement short pointent vers « cs-… ».
+    # Les lignes du récap deviennent des liens cliquables vers ces ancres.
+    _chart_anchor: dict = {}
+    for sc in top3_combos:
+        _chart_anchor.setdefault(_combo_slug(sc.periods), "c-" + _combo_slug(sc.periods))
+    for c in (sec2 + sec3 + secCourt):
+        _chart_anchor.setdefault(_combo_slug(c.periods), "c-" + _combo_slug(c.periods))
+    for c in short_top:
+        _chart_anchor.setdefault(_combo_slug(c.periods), "cs-" + _combo_slug(c.periods))
+
     # Tableau récapitulatif du HAUT : combinaisons long proposées, cycles UNIQUES
     # inclus (ceux qui passent le filtre) + paires + triples + courts.
     recap_html = _recap_table_html(
         combinations.get(1, []) + combinations.get(2, [])
-        + combinations.get(3, []) + combinations.get("court", [])
+        + combinations.get(3, []) + combinations.get("court", []),
+        charted=_chart_anchor, anchor_id="recap",
     )
 
     # Tableau FINAL (bas de page) : TOUTES les combinaisons proposées, tous types
@@ -520,7 +541,8 @@ def generate_report(
         + combinations.get("short_1", [])
         + combinations.get("short_2", []) + combinations.get("short_3", [])
     )
-    recap_full_html = _recap_table_html(all_proposed, title="Toutes les combinaisons proposées")
+    recap_full_html = _recap_table_html(all_proposed, title="Toutes les combinaisons proposées",
+                                        charted=_chart_anchor)
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)
 
@@ -597,9 +619,25 @@ def generate_report(
   .chk-cell {{ width: 26px; text-align: center; padding-left: 6px; padding-right: 4px; }}
   .mask-chk, .mask-all {{ cursor: pointer; accent-color: var(--blue); }}
   .combo-card.chart-off {{ display: none; }}
+  /* Lignes du récap cliquables → saut vers le graphique. */
+  .combo-link {{ color: #fff; text-decoration: none; cursor: pointer;
+                 border-bottom: 1px dotted var(--blue); }}
+  .combo-link:hover {{ color: var(--blue); }}
+  .combo-card:target {{ outline: 2px solid var(--blue); outline-offset: 3px; }}
+  /* Flèche flottante « retour au récapitulatif » (haut-gauche). */
+  .back-to-recap {{ position: fixed; top: 14px; left: 14px; z-index: 1000; display: none;
+                    width: 38px; height: 38px; border-radius: 50%;
+                    background: var(--blue); color: #fff; align-items: center;
+                    justify-content: center; font-size: 20px; font-weight: 700;
+                    text-decoration: none; box-shadow: 0 2px 10px rgba(0,0,0,.45);
+                    opacity: .9; }}
+  .back-to-recap:hover {{ opacity: 1; transform: scale(1.06); }}
+  .back-to-recap.show {{ display: flex; }}
 </style>
 </head>
 <body>
+
+<a href="#recap" class="back-to-recap" title="Retour au récapitulatif">↑</a>
 
 <div class="tab-bar">
   <button class="tab-btn active" onclick="switchTab('simple',this)">Somme des zones (simple)</button>
@@ -643,6 +681,28 @@ document.addEventListener('DOMContentLoaded', function () {{
       }});
     }});
   }});
+
+  // Clic sur une combinaison du récap → si son graphique était masqué, on le
+  // ré-affiche (et on décoche sa case) avant d'y sauter.
+  document.querySelectorAll('.combo-link').forEach(function (a) {{
+    a.addEventListener('click', function () {{
+      var slug = a.dataset.combo;
+      document.querySelectorAll('.combo-card[data-combo="' + slug + '"]').forEach(function (card) {{
+        card.classList.remove('chart-off');
+      }});
+      document.querySelectorAll('.mask-chk[data-combo="' + slug + '"]').forEach(function (cb) {{
+        cb.checked = false;
+      }});
+    }});
+  }});
+
+  // Flèche « retour au récapitulatif » : visible seulement après défilement.
+  var _back = document.querySelector('.back-to-recap');
+  if (_back) {{
+    var _toggle = function () {{ _back.classList.toggle('show', window.scrollY > 500); }};
+    window.addEventListener('scroll', _toggle);
+    _toggle();
+  }}
 }});
 </script>
 
