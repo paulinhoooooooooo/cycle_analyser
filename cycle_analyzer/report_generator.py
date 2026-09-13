@@ -233,9 +233,9 @@ def _recap_table_html(combos: List[CombinationResult],
         _cell = (f'<a class="combo-link" href="#{_anchor}" data-combo="{_slug}" '
                  f'title="Aller au graphique">{_lab}</a>') if _anchor else _lab
         rows += f"""
-        <tr>
+        <tr class="draggable-row" draggable="true">
           <td class="chk-cell"><input type="checkbox" class="mask-chk" data-combo="{_slug}" title="Masquer le graphique de cette combinaison plus bas"></td>
-          <td style="font-weight:600;color:#fff">{_cell}</td>
+          <td style="font-weight:600;color:#fff"><span class="drag-grip" title="Glisser pour réordonner">⠿</span>{_cell}</td>
           <td style="color:{long_col}">{long_ret:+.1f}%</td>
           <td style="color:{short_col}">{short_ret:+.1f}%</td>
           <td style="color:var(--text2)">{c.hit_rate:.0f}%</td>
@@ -248,7 +248,7 @@ def _recap_table_html(combos: List[CombinationResult],
     return f"""
 <h2{_idattr}>{title}
   <span style="font-size:11px;font-weight:400;color:var(--text2)">
-    &nbsp;— cliquez une combinaison pour aller à son graphique · cochez la case pour masquer le graphique · case en tête = tout cocher.
+    &nbsp;— cliquez une combinaison pour aller à son graphique · glissez la poignée ⠿ pour réordonner · cochez la case pour masquer le graphique.
   </span></h2>""" + f"""
 <div class="card">
   <table>
@@ -624,6 +624,11 @@ def generate_report(
                  border-bottom: 1px dotted var(--blue); }}
   .combo-link:hover {{ color: var(--blue); }}
   .combo-card:target {{ outline: 2px solid var(--blue); outline-offset: 3px; }}
+  /* Glisser-déposer des lignes du récap pour les réordonner. */
+  .drag-grip {{ cursor: grab; color: var(--text2); margin-right: 8px;
+               user-select: none; font-size: 12px; letter-spacing: -1px; }}
+  .drag-grip:active {{ cursor: grabbing; }}
+  tr.draggable-row.dragging {{ opacity: .4; background: #1f3249; }}
   /* Flèche flottante « retour au récapitulatif » (haut-gauche). */
   .back-to-recap {{ position: fixed; top: 14px; left: 14px; z-index: 1000; display: none;
                     width: 38px; height: 38px; border-radius: 50%;
@@ -693,6 +698,42 @@ document.addEventListener('DOMContentLoaded', function () {{
       document.querySelectorAll('.mask-chk[data-combo="' + slug + '"]').forEach(function (cb) {{
         cb.checked = false;
       }});
+    }});
+  }});
+
+  // Glisser-déposer : réordonner les lignes du récap pour comparer des cycles.
+  function _rowAfter(tbody, y) {{
+    var rows = [].slice.call(tbody.querySelectorAll('tr.draggable-row:not(.dragging)'));
+    var closest = null, closestOffset = -Infinity;
+    rows.forEach(function (r) {{
+      var box = r.getBoundingClientRect();
+      var offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closestOffset) {{ closestOffset = offset; closest = r; }}
+    }});
+    return closest;
+  }}
+  document.querySelectorAll('table').forEach(function (table) {{
+    var tbody = table.querySelector('tbody');
+    if (!tbody || !tbody.querySelector('tr.draggable-row')) return;
+    var dragEl = null;
+    tbody.querySelectorAll('tr.draggable-row').forEach(function (tr) {{
+      tr.addEventListener('dragstart', function (e) {{
+        // Ne pas déclencher le glissement depuis la case ou le lien.
+        if (e.target.closest('input, a')) {{ e.preventDefault(); return; }}
+        dragEl = tr; tr.classList.add('dragging');
+        if (e.dataTransfer) {{ e.dataTransfer.effectAllowed = 'move';
+          try {{ e.dataTransfer.setData('text/plain', ''); }} catch (_e) {{}} }}
+      }});
+      tr.addEventListener('dragend', function () {{
+        if (dragEl) dragEl.classList.remove('dragging'); dragEl = null;
+      }});
+    }});
+    tbody.addEventListener('dragover', function (e) {{
+      if (!dragEl || !tbody.contains(dragEl)) return;
+      e.preventDefault();
+      var after = _rowAfter(tbody, e.clientY);
+      if (after == null) tbody.appendChild(dragEl);
+      else tbody.insertBefore(dragEl, after);
     }});
   }});
 
