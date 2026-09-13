@@ -1,0 +1,37 @@
+name: Diagnostic cycle simple
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Symbole Yahoo (ex: ANTO.L)"
+        required: true
+        default: "ANTO.L"
+        type: string
+      start:
+        description: "Date de début (JJ/MM/AAAA). Vide = fenêtre 15y."
+        required: false
+        default: ""
+        type: string
+      near:
+        description: "Période cible à vérifier (barres)."
+        required: false
+        default: "540"
+        type: string
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install numpy pandas yfinance scipy requests
+      - env:
+          TICKER: ${{ inputs.ticker }}
+          START: ${{ inputs.start }}
+          NEAR: ${{ inputs.near }}
+        run: python diag_single.py
