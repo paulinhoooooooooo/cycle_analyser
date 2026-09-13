@@ -61,8 +61,14 @@ class CombinationResult:
         return ", ".join(str(p) for p in self.periods)
 
 
-def _compute_zones(prices: np.ndarray, mask: np.ndarray) -> List[ZoneResult]:
-    """Find contiguous True zones in mask and compute their price returns."""
+def _compute_zones(prices: np.ndarray, mask: np.ndarray,
+                   include_open: bool = False) -> List[ZoneResult]:
+    """Find contiguous True zones in mask and compute their price returns.
+
+    Par défaut la zone EN COURS (celle qui touche la DERNIÈRE barre) est EXCLUE :
+    elle n'est pas terminée, on ne connaît pas encore son issue (rendement,
+    gagnante ou non, durée réelle). L'inclure fausserait rendement / réussite /
+    durée / nombre de zones. Passer include_open=True pour la garder."""
     zones: List[ZoneResult] = []
     N = len(prices)
     i = 0
@@ -72,6 +78,9 @@ def _compute_zones(prices: np.ndarray, mask: np.ndarray) -> List[ZoneResult]:
             while i < N and mask[i]:
                 i += 1
             end = i - 1
+            # Zone en cours (arrive jusqu'à la dernière barre) → non terminée.
+            if end == N - 1 and not include_open:
+                break
             if end > start:
                 ret = (prices[end] - prices[start]) / prices[start] * 100
                 zones.append(ZoneResult(start=start, end=end,
@@ -146,6 +155,8 @@ def compute_single_cycle_hit_rates(prices: np.ndarray, period: int) -> Tuple[flo
             while i < N and bullish[i]:
                 i += 1
             last = i - 1
+            if last == N - 1:          # phase EN COURS → non terminée, exclue
+                break
             if last > start:
                 ret = (prices[last] - prices[start]) / prices[start]
                 bull_total += 1
@@ -156,6 +167,8 @@ def compute_single_cycle_hit_rates(prices: np.ndarray, period: int) -> Tuple[flo
             while i < N and not bullish[i]:
                 i += 1
             last = i - 1
+            if last == N - 1:          # phase EN COURS → non terminée, exclue
+                break
             if last > start:
                 ret = (prices[last] - prices[start]) / prices[start]
                 bear_total += 1

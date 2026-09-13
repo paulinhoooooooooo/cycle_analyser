@@ -409,13 +409,16 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
             k = 0
             while a + k * P < N:
                 s = a + k * P
-                e = min(N - 1, s + U - 1)
-                if e > s:
+                # Zone HAUSSE : comptée seulement si TERMINÉE (sa fin naturelle
+                # tombe dans les données). La zone en cours (fin au-delà de la
+                # dernière barre) est exclue : issue inconnue.
+                e = s + U - 1
+                if s < e < N:
                     r = (p[e] - p[s]) / p[s]
                     up_ret += r; up_n += 1; up_hits += (r > 0)
                 ds = s + U
-                de = min(N - 1, s + P - 1)
-                if ds < N and de > ds:
+                de = s + P - 1                     # fin naturelle de la baisse
+                if ds < de < N:                    # baisse TERMINÉE uniquement
                     r = (p[de] - p[ds]) / p[ds]
                     dn_gain += -r; dn_n += 1; dn_hits += (r < 0)
                 k += 1
