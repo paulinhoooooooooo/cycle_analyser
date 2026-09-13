@@ -1,0 +1,57 @@
+name: Scan univers (S&P 500 / indices / liste)
+
+on:
+  workflow_dispatch:
+    inputs:
+      universe:
+        description: "Univers à scanner"
+        required: true
+        default: "sp500"
+        type: choice
+        options: ["sp500", "indices", "list"]
+      tickers:
+        description: "(si univers = list) symboles Yahoo séparés par des espaces"
+        required: false
+        default: ""
+        type: string
+      start:
+        description: "Date de début JJ/MM/AAAA (vide = fenêtre 15y)"
+        required: false
+        default: ""
+        type: string
+      min_hit:
+        description: "Réussite minimale Long ET Short (%)"
+        required: false
+        default: "90"
+        type: string
+      min_zones:
+        description: "Zones minimales de chaque côté"
+        required: false
+        default: "5"
+        type: string
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install numpy pandas yfinance scipy requests lxml
+      - name: Scan lot ${{ matrix.batch }}
+        env:
+          UNIVERSE: ${{ inputs.universe }}
+          TICKERS: ${{ inputs.tickers }}
+          SCREEN_START: ${{ inputs.start }}
+          MIN_HIT: ${{ inputs.min_hit }}
+          MIN_ZONES: ${{ inputs.min_zones }}
+          BATCH_INDEX: ${{ matrix.batch }}
+          NUM_BATCHES: "12"
+        run: python scan_universe.py
