@@ -410,11 +410,20 @@ def _combo_contains(big: "CombinationResult", small: "CombinationResult") -> boo
 
 
 def _combos_near_duplicate(a: "CombinationResult", b: "CombinationResult") -> bool:
-    """True si a et b (même nombre de cycles) partagent tous leurs cycles SAUF au
-    plus un — donc quasi-identiques (ex: 124+86+330 et 124+86+204 ne changent que
-    d'un cycle). Dans ce cas on ne garde que la meilleure des deux."""
+    """True si a et b (même nombre de cycles) sont quasi-identiques → on ne garde
+    que la meilleure des deux.
+
+    ⚠ Cas des PAIRES : partager UN seul cycle ne suffit PAS. Ex : 289+190 et
+    289+1524 partagent 289, mais 190 et 1524 sont des cycles TOTALEMENT différents
+    → ce sont deux opportunités distinctes, PAS un doublon. Une paire n'est un
+    doublon que si ses DEUX cycles sont proches (ex : 80+177 / 80+180).
+
+    Triples et plus : quasi-identiques s'ils ne diffèrent que d'un cycle (ex :
+    124+86+330 / 124+86+204), car ils partagent alors la MAJORITÉ des cycles."""
     if len(a.periods) != len(b.periods):
         return False
+    if len(a.periods) <= 2:
+        return _combos_too_similar(a.periods, b.periods)   # paire : les 2 doivent être proches
     shared = 0
     used = list(b.periods)
     for pa in a.periods:
@@ -497,6 +506,36 @@ def _select_triples(triples, score, hit, base_n, min_hit, pairs_shown, extra_cap
         if any(_combo_contains(t, p) for p in pairs_shown):
             target = min(target + 1, cap)          # triple qui reprend une paire → +1 proposition
     return selected
+
+
+# Un short doit dépasser d'au moins ce nombre de points le meilleur short déjà
+# présent dans la famille pour être ajouté comme « champion du short ».
+_SHORT_CHAMP_MARGIN = 30.0
+_SHORT_CHAMP_MIN_HIT = 60.0
+
+
+def _add_short_champions(long_list: List["CombinationResult"],
+                         short_list: List["CombinationResult"]) -> List["CombinationResult"]:
+    """Option A : pour chaque FAMILLE de cycles déjà présente dans la liste LONG,
+    on ajoute (depuis la liste SHORT) la combinaison CHAMPIONNE du short SI elle
+    apporte un avantage short net que les membres déjà affichés n'ont pas.
+
+    Sans ça, la fusion des quasi-doublons (cycles à ~18 % près) ne garde que le
+    meilleur en LONG et fait perdre un excellent SHORT du même « cycle » (ex.
+    1454+238 gardait +169 % short, remplacé par 1399+238 à +65 %). On récupère
+    donc le champion du short, sans réintroduire de vrais doublons."""
+    out = list(long_list)
+    for s in short_list:
+        s_short = -s.bearish_total_return_pct
+        if s_short <= 0 or s.bearish_hit_rate < _SHORT_CHAMP_MIN_HIT:
+            continue
+        fam = [c for c in out if _combos_too_similar(c.periods, s.periods)]
+        if not fam:
+            continue                       # famille pas affichée en long → pas ici
+        best_short = max(-c.bearish_total_return_pct for c in fam)
+        if s_short >= best_short + _SHORT_CHAMP_MARGIN:
+            out.append(s)                  # champion du short distinct → on l'ajoute
+    return out
 
 
 def _return_scan_pool(prices: np.ndarray, top_n: int = 14,
@@ -825,6 +864,9 @@ def analyze_combinations(
         results["short_1"] = _best_variants(_all_passing(singles_short, _qual_short, _hit_gate_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
         results["short_2"] = _best_variants(_all_passing(pairs_s, _qual_short, _hit_gate_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
         results["short_3"] = _best_variants(_all_passing(triples_s, _qual_short, _hit_gate_s), _ret_s, _hit_s, _zon_s)[:_FILTER_MAX]
+        # Option A : garder aussi le CHAMPION DU SHORT de chaque famille affichée.
+        results[2] = _add_short_champions(results[2], results["short_2"])
+        results[3] = _add_short_champions(results[3], results["short_3"])
         # Le résumé « TOP 3 MEILLEURES COMBINAISONS » ne montre QUE des combinaisons
         # (2-3 cycles), jamais un cycle unique — results[1] est volontairement exclu.
         results["diverse"] = pick_diverse(results[2] + results[3],
@@ -833,21 +875,24 @@ def analyze_combinations(
 
     # Classement PUR par équilibre rendement × réussite : un petit gain de rendement
     # ne compense pas une réussite faible ; un très gros rendement, oui.
+    # Le RÉCAP montre plus large (pour ne pas cacher une combinaison à fort
+    # rendement) ; le résumé « Top 3 » (results["diverse"]) reste, lui, à 3.
+    _recap_n = max(top_n_per_size, 12)
     results[2] = pick_diverse(pairs, score=_qual, hit=_hit_l,
-                              n=top_n_per_size, min_hit=mh, cross_dedup=False)
+                              n=_recap_n, min_hit=mh, cross_dedup=False)
     results["short_2"] = pick_diverse(pairs_s, score=_qual_short, hit=_hit_s,
-                                      n=top_n_per_size, min_hit=mh, cross_dedup=False)
+                                      n=_recap_n, min_hit=mh, cross_dedup=False)
 
     # Triples : on garde les deux (paire + triple qui la reprend) mais on ajoute une
     # proposition supplémentaire quand un triple reprend une paire déjà proposée.
-    results[3] = _select_triples(triples, _qual, _hit_l, top_n_per_size, mh, results[2])
-    results["short_3"] = _select_triples(triples_s, _qual_short, _hit_s, top_n_per_size, mh,
+    results[3] = _select_triples(triples, _qual, _hit_l, _recap_n, mh, results[2])
+    results["short_3"] = _select_triples(triples_s, _qual_short, _hit_s, _recap_n, mh,
                                          results["short_2"])
 
     # Catégorie SUPPLÉMENTAIRE : combinaisons composées UNIQUEMENT de cycles courts
     # (tous les cycles < _COURT_MAX_PERIOD jours).
     results["court"] = pick_diverse(short_only, score=_qual, hit=_hit_l,
-                                    n=top_n_per_size, min_hit=mh, cross_dedup=True)
+                                    n=_recap_n, min_hit=mh, cross_dedup=True)
 
     # En mode ANCRÉ, on garantit que les meilleurs combos CLASSIQUES ressortent
     # aussi (sinon les ancrés à gros rendement cumulé les masquent).
@@ -856,6 +901,10 @@ def analyze_combinations(
         results[2] = _ensure_classics(results[2], pairs, _qual, _hit_l, _nx, mh)
         results[3] = _ensure_classics(results[3], triples, _qual, _hit_l, _nx, mh)
         results["court"] = _ensure_classics(results["court"], short_only, _qual, _hit_l, _nx, mh)
+
+    # Option A : garder aussi le CHAMPION DU SHORT de chaque famille déjà affichée.
+    results[2] = _add_short_champions(results[2], results["short_2"])
+    results[3] = _add_short_champions(results[3], results["short_3"])
 
     # Cycles SIMPLES (1 cycle) proposés dans le récap, même sans filtre :
     # réussite >= 80%, les top_n_per_size meilleurs par rendement.
