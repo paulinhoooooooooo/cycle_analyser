@@ -42,18 +42,36 @@ def _combo_phase(combo: CombinationResult) -> tuple:
     return _COMBO_PHASE["neutral"]
 
 
+# Jours calendaires par barre (séance). Mis à jour au début de generate_report
+# selon la fenêtre de données. Sert à AFFICHER toutes les durées en JOURS
+# (l'interne reste en barres). ~1.44 en journalier (week-ends + fériés sautés).
+_DPB: float = 1.0
+
+
+def _d(bars) -> int:
+    """Convertit un nombre de barres en JOURS calendaires (pour l'affichage)."""
+    return int(round(float(bars) * _DPB))
+
+
+def _combo_days_label(combo) -> str:
+    """Libellé d'une combinaison en JOURS : '116 + 256 j' (au lieu de '80 + 177')."""
+    return " + ".join(str(_d(c.period)) for c in combo.cycles) + " j"
+
+
 def _cycle_period_label(c: CycleInfo) -> str:
-    """Libellé COURT d'un cycle (badge) : '1456b' ou, si asymétrique, '1456b ↑1058/↓398'."""
+    """Libellé COURT d'un cycle (badge), en JOURS : '2095 j' ou, si asymétrique,
+    '2095 j ↑1524/↓571'."""
     a = getattr(c, "asym", None)
-    return f"{c.period}b ↑{a[0]}/↓{a[1]}" if a else f"{c.period}b"
+    return f"{_d(c.period)} j ↑{_d(a[0])}/↓{_d(a[1])}" if a else f"{_d(c.period)} j"
 
 
 def _cycle_title(c: CycleInfo) -> str:
-    """Titre LONG d'un cycle simple (carte) : asymétrique → détaille hausse/baisse."""
+    """Titre LONG d'un cycle simple (carte), en JOURS : asymétrique → détaille
+    hausse/baisse."""
     a = getattr(c, "asym", None)
     if a:
-        return f"Cycle {c.period} b · ↑{a[0]} hausse / ↓{a[1]} baisse"
-    return f"Cycle {c.period} barres"
+        return f"Cycle {_d(c.period)} j · ↑{_d(a[0])} j hausse / ↓{_d(a[1])} j baisse"
+    return f"Cycle {_d(c.period)} jours"
 
 
 def _cycle_phase_badge(c: CycleInfo) -> tuple:
@@ -73,7 +91,7 @@ def _cycle_row_html(c: CycleInfo) -> str:
     return f"""
     <tr>
       <td>{c.rank}</td>
-      <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{c.period}</span></td>
+      <td><span class="badge" style="background:{bg}22;border:1px solid {fg};color:{fg}">{_d(c.period)} j</span></td>
       <td>{c.amplitude:,.2f}</td>
       <td>{c.strength:.2f}</td>
       <td style="font-weight:{stab_weight};color:{stab_color}">{c.stability:.2f}</td>
@@ -107,7 +125,7 @@ def _summary_html(
         combo_rows += f"""
         <tr>
           <td><span class="rank-badge">#{i}</span></td>
-          <td style="font-weight:600;color:#fff">{c.label}</td>
+          <td style="font-weight:600;color:#fff">{_combo_days_label(c)}</td>
           <td><span class="badge" style="background:{ph_bg}22;border:1px solid {ph_fg};color:{ph_fg}">{ph_label}</span></td>
           <td><span class="ret-val" data-simple="{bull_s}" data-compound="{bull_c}" style="{bull_col}">{bull_s}</span></td>
           <td><span class="ret-val" data-simple="{short_s}" data-compound="{short_c}" style="{short_col2}">{short_s}</span></td>
@@ -208,7 +226,7 @@ def _recap_table_html(combos: List[CombinationResult],
         rows += f"""
         <tr>
           <td class="chk-cell"><input type="checkbox" class="mask-chk" data-combo="{_slug}" title="Masquer le graphique de cette combinaison plus bas"></td>
-          <td style="font-weight:600;color:#fff">{c.label}</td>
+          <td style="font-weight:600;color:#fff">{_combo_days_label(c)}</td>
           <td style="color:{long_col}">{long_ret:+.1f}%</td>
           <td style="color:{short_col}">{short_ret:+.1f}%</td>
           <td style="color:var(--text2)">{c.hit_rate:.0f}%</td>
@@ -266,7 +284,7 @@ def _combo_card_short_html(combo: CombinationResult, img_b64: str, rank: int) ->
     <div class="card combo-card" data-combo="{_combo_slug(combo.periods)}" style="border-left:3px solid #f85149">
       <div class="card-header">
         <span class="rank-badge">#{rank}</span>
-        <span class="combo-title">Cycles : {combo.label}</span>
+        <span class="combo-title">Cycles : {_combo_days_label(combo)}</span>
         <span class="badge" style="background:{ph_bg}33;border:1px solid {ph_fg};color:{ph_fg};font-size:12px;padding:3px 10px">{ph_label}</span>
         <span class="stat-chip {short_col} ret-val" data-simple="{short_s}" data-compound="{short_c}" style="font-size:13px;font-weight:700">{short_s}</span>
         <span class="stat-chip red">{combo.bearish_hit_rate:.0f}% réussite short</span>
@@ -322,7 +340,7 @@ def _combo_card_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
     <div class="card combo-card" data-combo="{_combo_slug(combo.periods)}">
       <div class="card-header">
         <span class="rank-badge">#{rank}</span>
-        <span class="combo-title">Cycles : {combo.label}</span>
+        <span class="combo-title">Cycles : {_combo_days_label(combo)}</span>
         <span class="badge" style="background:{ph_bg}33;border:1px solid {ph_fg};color:{ph_fg};font-size:12px;padding:3px 10px">{ph_label}</span>
         <span class="stat-chip green ret-val" data-simple="{bull_s}" data-compound="{bull_c}">{bull_s}</span>
         <span class="stat-chip">{combo.hit_rate:.0f}% réussite long</span>
@@ -352,6 +370,12 @@ def generate_report(
     price_last = prices[-1]
     price_first = prices[0]
     total_perf = (price_last - price_first) / price_first * 100
+
+    # Toutes les durées sont AFFICHÉES en jours calendaires : on fixe le facteur
+    # barres → jours d'après la fenêtre de données (l'interne reste en barres).
+    global _DPB
+    _hist_days = int((dates[-1] - dates[0]).days)
+    _DPB = _hist_days / max(n_bars - 1, 1)
 
     # Sections avec GRAPHIQUES : plafonnées à _CHART_CAP par catégorie. Le récap
     # (tableaux plus bas, sans image) montre TOUTES les combinaisons, lui.
@@ -427,9 +451,9 @@ def generate_report(
         if _asym:
             _U, _D, _phi = _asym
             desc_chips = (
-                f'<span class="stat-chip green">↑ {_U} barres hausse</span>'
-                f'<span class="stat-chip red">↓ {_D} barres baisse</span>'
-                f'<span class="stat-chip">Période {c.period} b</span>'
+                f'<span class="stat-chip green">↑ {_d(_U)} j hausse</span>'
+                f'<span class="stat-chip red">↓ {_d(_D)} j baisse</span>'
+                f'<span class="stat-chip">Période {_d(c.period)} j</span>'
             )
         else:
             desc_chips = (
@@ -626,7 +650,7 @@ document.addEventListener('DOMContentLoaded', function () {{
 <div class="meta">
   Généré le {now} &nbsp;|&nbsp;
   Données : du {dates[0].strftime('%d/%m/%Y')} au {dates[-1].strftime('%d/%m/%Y')} &nbsp;|&nbsp;
-  Intervalle : {interval} &nbsp;|&nbsp; {n_bars} barres
+  Intervalle : {interval} &nbsp;|&nbsp; {n_bars} séances (~{_hist_days} jours)
 </div>
 {f'<div class="meta" style="margin-top:6px"><span class="badge" style="background:#1f6feb22;border:1px solid #1f6feb;color:#58a6ff;padding:3px 10px">Filtres actifs : {options_note}</span></div>' if options_note else ''}
 
@@ -663,7 +687,7 @@ document.addEventListener('DOMContentLoaded', function () {{
   </div>
   <div class="kpi">
     <div class="kpi-label">Meilleur cycle</div>
-    <div class="kpi-val">{cycles[0].period if cycles else '—'} barres</div>
+    <div class="kpi-val">{_d(cycles[0].period) if cycles else '—'} jours</div>
   </div>
   <div class="kpi">
     <div class="kpi-label">Stabilité max</div>
@@ -680,7 +704,7 @@ document.addEventListener('DOMContentLoaded', function () {{
   <table>
     <thead>
       <tr>
-        <th>#</th><th>Longueur (barres)</th><th>Amplitude</th>
+        <th>#</th><th>Longueur (jours)</th><th>Amplitude</th>
         <th>Force</th><th>Stabilité</th><th>Phase actuelle</th>
       </tr>
     </thead>

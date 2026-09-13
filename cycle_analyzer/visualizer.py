@@ -411,6 +411,7 @@ def plot_single_cycle(
     _avg_bull_bars = (bull_dur_total / bull_zone_idx) if bull_zone_idx else 0.0
     _days_per_bar = ((dates[-1] - dates[0]).days / max(N - 1, 1)) if N >= 2 else 1.0
     _avg_bull_days = _avg_bull_bars * _days_per_bar
+    _d = lambda b: int(round(float(b) * _days_per_bar))   # barres -> jours (affichage)
 
     # ── Repère du DÉBUT du cycle EN COURS (haussier ou baissier) ──────────────
     # Date OBSERVÉE (bord gauche de la zone actuelle), pas une projection : stable.
@@ -433,8 +434,8 @@ def plot_single_cycle(
         bbox=dict(boxstyle="round,pad=0.25", facecolor=PANEL, edgecolor=_cur_color, alpha=0.9),
     )
 
-    _cyc_lab = (f"{cycle.period}b ↑{cycle.asym[0]}/↓{cycle.asym[1]}" if _is_asym
-                else f"{cycle.period} barres")
+    _cyc_lab = (f"{_d(cycle.period)} j ↑{_d(cycle.asym[0])}/↓{_d(cycle.asym[1])}" if _is_asym
+                else f"{_d(cycle.period)} jours")
     ax_price.set_title(
         f"{ticker} — Cycle {_cyc_lab}  "
         f"| Amp: {cycle.amplitude:,.2f}  | Force: {cycle.strength:.2f}  "
@@ -442,7 +443,7 @@ def plot_single_cycle(
         f"| Réussite ↑ {cycle.hit_rate:.0f}% / Short {cycle.short_hit_rate:.0f}%  "
         f"| ↑ {bull_simple:+.1f}% (Σ) / {bull_compound:+.1f}% (composé)"
         f"  | Short: {-bear_simple:+.1f}% (Σ) / {short_compound:+.1f}% (composé)"
-        f"  | Durée ↑ moy: {_avg_bull_bars:.0f} barres (~{_avg_bull_days:.0f} j)",
+        f"  | Durée ↑ moy: ~{_avg_bull_days:.0f} jours",
         color=TEXT, fontsize=9, pad=6, loc="left",
     )
     ax_price.set_ylabel("Prix", fontsize=8.5)
@@ -454,7 +455,7 @@ def plot_single_cycle(
     if _active > 0:                       # pas d'oscillateur avant l'ancrage
         osc_norm = osc_norm.astype(float).copy()
         osc_norm[:_active] = np.nan
-    ax_osc.plot(x, osc_norm, color=BLUE, linewidth=1.5, zorder=3, label=f"Oscillateur {cycle.period}")
+    ax_osc.plot(x, osc_norm, color=BLUE, linewidth=1.5, zorder=3, label=f"Oscillateur {_d(cycle.period)} j")
     # Dates des 2 derniers creux/pics PASSÉS (en plus des futurs).
     if not _is_asym:
         _annotate_recent_transitions(ax_osc, x, osc_norm, dates, BLUE)
@@ -585,7 +586,7 @@ def plot_single_cycle(
     y_mid = ymin + (ymax - ymin) * 0.50
     ax_price.text(
         next_x + pad * 0.15, y_mid,
-        f"{event_label}\n{date_str}\n(dans {bars_ahead}b)",
+        f"{event_label}\n{date_str}\n(dans {_d(bars_ahead)} j)",
         color=event_color, fontsize=7.5, ha="left", va="center",
         fontweight="bold", zorder=6,
         bbox=dict(boxstyle="round,pad=0.3", facecolor=PANEL,
@@ -644,14 +645,15 @@ def plot_combination(
                       color=col, fontsize=6.0, ha="center", va="bottom",
                       zorder=5, rotation=90)
 
-    periods_str = " + ".join(
-        (f"{c.period}↑{c.asym[0]}/↓{c.asym[1]}" if getattr(c, "asym", None) else str(c.period))
-        for c in combo.cycles
-    )
-    _has_asym = any(getattr(c, "asym", None) for c in combo.cycles)
-    # Durée moyenne RÉELLE des zones haussières de la combinaison (barres + jours)
-    _avg_bull_bars = (sum(z.duration for z in combo.zones) / len(combo.zones)) if combo.zones else 0.0
     _days_per_bar = ((dates[-1] - dates[0]).days / max(N - 1, 1)) if N >= 2 else 1.0
+    _d = lambda b: int(round(float(b) * _days_per_bar))       # barres -> jours (affichage)
+    periods_str = " + ".join(
+        (f"{_d(c.period)}↑{_d(c.asym[0])}/↓{_d(c.asym[1])}" if getattr(c, "asym", None) else f"{_d(c.period)}")
+        for c in combo.cycles
+    ) + " j"
+    _has_asym = any(getattr(c, "asym", None) for c in combo.cycles)
+    # Durée moyenne RÉELLE des zones haussières de la combinaison (en jours)
+    _avg_bull_bars = (sum(z.duration for z in combo.zones) / len(combo.zones)) if combo.zones else 0.0
     _avg_bull_days = _avg_bull_bars * _days_per_bar
     bear_str = (
         f"  |  Short: {-combo.bearish_total_return_pct:+.1f}% (Σ) / {combo.short_compound_return_pct:+.1f}% (composé)"
@@ -661,7 +663,7 @@ def plot_combination(
         f"{ticker} — Cycles {periods_str}  "
         f"| ↑ {combo.total_return_pct:+.1f}% (Σ) / {combo.compound_return_pct:+.1f}% (composé)"
         f" · {combo.hit_rate:.0f}% réussite · {combo.n_zones} zones"
-        f" · Durée ↑ moy: {_avg_bull_bars:.0f} barres (~{_avg_bull_days:.0f} j)"
+        f" · Durée ↑ moy: ~{_avg_bull_days:.0f} jours"
         f"{bear_str}",
         color=TEXT, fontsize=9, pad=6, loc="left",
     )
@@ -696,8 +698,8 @@ def plot_combination(
         ax.axhline(0, color=GRID, linewidth=1, zorder=2)
         ax.set_ylim(-1.55, 1.55)
 
-        _ylab = (f"{cycle.period}b ↑{_cyc_asym[0]}/↓{_cyc_asym[1]}" if _cyc_asym
-                 else f"{cycle.period}b")
+        _ylab = (f"{_d(cycle.period)}j ↑{_d(_cyc_asym[0])}/↓{_d(_cyc_asym[1])}" if _cyc_asym
+                 else f"{_d(cycle.period)}j")
         ax.set_ylabel(_ylab, fontsize=7.5, color=col)
         ax.grid(True, color=GRID, linewidth=0.4)
 
