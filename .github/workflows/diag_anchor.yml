@@ -1,0 +1,31 @@
+name: Diagnostic ancrage
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Symbole Yahoo (ex: REP.MC)"
+        required: true
+        default: "REP.MC"
+        type: string
+      periods:
+        description: "Périodes à tester (barres), séparées par des virgules."
+        required: false
+        default: "167,1027,1020,164,1171"
+        type: string
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install numpy pandas yfinance scipy requests
+      - env:
+          TICKER: ${{ inputs.ticker }}
+          PERIODS: ${{ inputs.periods }}
+        run: python diag_anchor.py
