@@ -660,7 +660,20 @@ def analyze_combinations(
     if asym or anchored:
         _cap = max_period if max_period is not None else n_bars // 2
         _periods = {c.period for c in pool}
-        for _p in range(300, min(_cap, n_bars // 2) + 1, 60):
+        # GRILLE RÉGULIÈRE ET FINE de périodes candidates pour l'ancrage, en plus
+        # des pics FFT. Pourquoi : la FFT « glisse » de quelques barres selon la
+        # fenêtre (ex. 1027 sur un start, 1018 sur un autre) et peut donc RATER la
+        # bonne période → un même cycle réel apparaît ou disparaît selon le --start.
+        # L'évaluation ancrée, elle, est indépendante du start ; en balayant un pas
+        # fin (20 barres) on garantit qu'un cycle comme ~1020 est TOUJOURS testé,
+        # quelle que soit la date de début → apparition des cycles STABLE.
+        # Balayage fin (pas de 20) du domaine MOYEN-LONG (≥ 200 barres), là où la
+        # FFT est la moins fiable et où un décalage de quelques barres fait « rater »
+        # le cycle. Les périodes courtes/moyennes (< 200) sont déjà bien couvertes
+        # par la FFT + le scan de rendement, et coûteraient cher ici (beaucoup de
+        # répétitions) → on ne les ajoute pas à la grille.
+        _hi = min(_cap, n_bars // 2)
+        for _p in range(200, _hi + 1, 20):
             _periods.add(_p)
         _periods = sorted(p for p in _periods if 15 <= p < _cap)
         # Par défaut on optimise l'ancrage sur la HAUSSE seule ; le short n'entre
