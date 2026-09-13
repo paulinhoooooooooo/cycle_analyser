@@ -1,0 +1,83 @@
+name: Rapport cycles (télécharger le HTML)
+
+# Lance l'analyse dans le cloud (aucune installation sur ton ordi) et produit le
+# rapport HTML à TÉLÉCHARGER depuis la page du run (section « Artifacts »).
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Symbole Yahoo (ex: REP.MC, BTC-USD, AIR.PA)"
+        required: true
+        default: "REP.MC"
+        type: string
+      start:
+        description: "Date de début JJ/MM/AAAA (vide = 3 dernières années)"
+        required: false
+        default: "01/01/2010"
+        type: string
+      asym:
+        description: "Cycles asymétriques + ancrés (--asym)"
+        required: false
+        default: "oui"
+        type: choice
+        options: ["oui", "non"]
+      ancrage:
+        description: "Décalage du début en mode classique (--ancrage)"
+        required: false
+        default: "non"
+        type: choice
+        options: ["non", "oui"]
+      bilateral:
+        description: "Exiger long ET short (--bilateral)"
+        required: false
+        default: "non"
+        type: choice
+        options: ["non", "oui"]
+      reussite:
+        description: "Réussite minimale en % (vide = pas de filtre). Ex: 80"
+        required: false
+        default: ""
+        type: string
+      court:
+        description: "Ne garder que les cycles < N jours (vide = pas de filtre). Ex: 300"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  rapport:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Dépendances
+        run: pip install -r requirements.txt
+      - name: Générer le rapport
+        env:
+          TICKER: ${{ inputs.ticker }}
+          START: ${{ inputs.start }}
+          ASYM: ${{ inputs.asym }}
+          ANCRAGE: ${{ inputs.ancrage }}
+          BILATERAL: ${{ inputs.bilateral }}
+          REUSSITE: ${{ inputs.reussite }}
+          COURT: ${{ inputs.court }}
+        run: |
+          ARGS="$TICKER --no-browser --output rapport.html"
+          if [ -n "$START" ]; then ARGS="$ARGS --start $START"; fi
+          if [ "$ASYM" = "oui" ]; then ARGS="$ARGS --asym"; fi
+          if [ "$ANCRAGE" = "oui" ]; then ARGS="$ARGS --ancrage"; fi
+          if [ "$BILATERAL" = "oui" ]; then ARGS="$ARGS --bilateral"; fi
+          if [ -n "$REUSSITE" ]; then ARGS="$ARGS --reussite $REUSSITE"; fi
+          if [ -n "$COURT" ]; then ARGS="$ARGS --court $COURT"; fi
+          echo "Commande : python cycle_analyser.py $ARGS"
+          python cycle_analyser.py $ARGS
+      - name: Publier le rapport (à télécharger)
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-${{ inputs.ticker }}
+          path: rapport.html
+          if-no-files-found: error
