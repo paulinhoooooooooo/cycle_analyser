@@ -1,0 +1,56 @@
+name: Diagnostic récap
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Symbole Yahoo (ex: URI)"
+        required: true
+        default: "URI"
+        type: string
+      start:
+        description: "Date de début JJ/MM/AAAA (vide = period)"
+        required: false
+        default: "01/01/2010"
+        type: string
+      period:
+        description: "Période glissante si pas de start (ex: 15y)"
+        required: false
+        default: "3y"
+        type: string
+      bilateral:
+        description: "Exiger long ET short (--bilateral)"
+        required: false
+        default: "non"
+        type: choice
+        options: ["non", "oui"]
+      reussite:
+        description: "Réussite minimale (%) — vide = pas de filtre"
+        required: false
+        default: ""
+        type: string
+      court:
+        description: "Ne garder que les cycles < N jours — vide = pas de filtre"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - env:
+          TICKER: ${{ inputs.ticker }}
+          START: ${{ inputs.start }}
+          PERIOD: ${{ inputs.period }}
+          BILATERAL: ${{ inputs.bilateral }}
+          REUSSITE: ${{ inputs.reussite }}
+          COURT: ${{ inputs.court }}
+        run: python diag_recap.py
