@@ -404,6 +404,9 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
         u_range = range(lo, hi + 1, step)
     best = None       # variante qui maximise le RENDEMENT (× réussite)
     best_hit = None   # variante qui maximise la RÉUSSITE (puis le rendement)
+    per_anchor = {}   # meilleure variante (par val) POUR CHAQUE ancrage (= chaque
+                      # début possible) → deux cycles de même période ancrés à des
+                      # creux différents sont des cycles DIFFÉRENTS et tous gardés.
     for U in u_range:
         for a in anchors:
             up_ret = dn_gain = 0.0
@@ -437,6 +440,9 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
                         up_hit=up_hit * 100.0, dn_hit=dn_hit * 100.0)
             if best is None or val > best["val"]:
                 best = cand
+            pa = per_anchor.get(a)
+            if pa is None or val > pa["val"]:
+                per_anchor[a] = cand
             # Variante « la plus FIABLE » : maximise la RÉUSSITE LONG (celle que
             # l'utilisateur lit dans le récap), départage par le rendement. On se
             # base sur le long même en bilatéral : un cycle 100 % en Long mais 67 %
@@ -451,13 +457,26 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
                     best_hit = (rel, rel_ret, cand)
     if not return_variants:
         return best
-    variants = [best] if best else []
-    if best is not None and best_hit is not None:
+    # On renvoie la MEILLEURE variante de chaque ANCRAGE distinct (= chaque début
+    # possible), triées par rendement, en retirant seulement les doublons de
+    # PERFORMANCE (même découpage + mêmes rendement/réussite arrondis). Ainsi le
+    # même cycle ancré plus tard (moins de zones, autre découpage optimal, ex. un
+    # « 930 j » qui démarre en 2011) apparaît à côté de la version ancrée tôt.
+    variants = []
+    seen = set()
+    for c in sorted(per_anchor.values(), key=lambda c: c["val"], reverse=True):
+        sig = (c["U"], round(c["up_ret"]), round(c["up_hit"]), round(c["dn_hit"]))
+        if sig in seen:
+            continue
+        seen.add(sig)
+        variants.append(c)
+        if len(variants) >= 6:
+            break
+    # garantit la variante la plus FIABLE en long même si elle n'est pas dans le top
+    if best_hit is not None:
         hv = best_hit[2]
-        # On ne garde la 2e variante que si elle est VRAIMENT plus fiable en LONG
-        # (≥ 3 points de réussite en plus) ET distincte (autre découpage/ancrage).
-        if (hv["U"], hv["anchor"]) != (best["U"], best["anchor"]) and \
-                hv["up_hit"] >= best["up_hit"] + 3.0:
+        hsig = (hv["U"], round(hv["up_ret"]), round(hv["up_hit"]), round(hv["dn_hit"]))
+        if hsig not in seen:
             variants.append(hv)
     return variants
 
@@ -480,16 +499,17 @@ def _anchored_ci(prices: np.ndarray, period: int, b: dict) -> "CycleInfo":
     )
 
 
-def anchored_hit_variant(prices: np.ndarray, period, both_sides: bool = False):
-    """Renvoie la variante ANCRÉE qui MAXIMISE LA RÉUSSITE pour cette période
-    (au lieu du rendement), sous forme de CycleInfo — quand elle diffère nettement
-    de la variante par défaut (max-rendement). Sert à proposer, pour une même
-    période, la version la plus FIABLE en plus de la plus rentable. Sinon None."""
+def anchored_variants(prices: np.ndarray, period, both_sides: bool = False):
+    """Renvoie TOUTES les variantes ANCRÉES distinctes d'une période (différents
+    ANCRAGES = différents débuts, + variante la plus fiable), sous forme de liste
+    de CycleInfo. Sert à proposer, pour une même période, plusieurs cycles réels
+    différents (le même cycle ancré tôt ET ancré plus tard, etc.)."""
     variants = detect_anchored_cycle(prices, period, both_sides=both_sides,
                                      return_variants=True)
-    if variants and len(variants) > 1:
-        return _anchored_ci(prices, int(round(period)), variants[1])
-    return None
+    if not variants:
+        return []
+    p = int(round(period))
+    return [_anchored_ci(prices, p, v) for v in variants]
 
 
 def build_anchored_pool(prices: np.ndarray, periods, per_bucket: int = 7,

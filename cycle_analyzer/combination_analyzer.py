@@ -8,7 +8,7 @@ import numpy as np
 
 from .cycle_detector import (
     CycleInfo, get_bullish_mask, _detrend_log, _fit_sine, _phase_state,
-    build_asym_pool, build_anchored_pool, anchored_hit_variant,
+    build_asym_pool, build_anchored_pool, anchored_variants,
 )
 
 
@@ -741,23 +741,22 @@ def analyze_combinations(
                         for c in pool if getattr(c, "bull_mask", None) is None}
 
     def _hit_variant_singles() -> List[CombinationResult]:
-        """Pour chaque cycle ANCRÉ retenu, sa variante « la plus FIABLE » (max
-        réussite) évaluée en cycle SIMPLE — en plus de la variante « la plus
-        rentable » déjà dans le pool. On propose ainsi, pour une même période, la
-        version robuste ET la version rentable ; le dédup garde les deux quand
-        elles ne se dominent pas. Peu coûteux (uniquement les périodes retenues)."""
+        """Pour chaque période ANCRÉE retenue, TOUTES ses variantes distinctes
+        (différents ANCRAGES = différents débuts, + la plus fiable) évaluées en
+        cycle SIMPLE — en plus de la variante par défaut déjà dans le pool. On
+        propose ainsi, pour une même période, plusieurs cycles réels différents
+        (le même cycle ancré tôt ET ancré plus tard). Le dédup du récap garde
+        ceux qui diffèrent. Peu coûteux (uniquement les périodes retenues)."""
         out: List[CombinationResult] = []
         seen_periods = set()
         for c in pool:
             if getattr(c, "bull_mask", None) is None or c.period in seen_periods:
                 continue
             seen_periods.add(c.period)
-            alt = anchored_hit_variant(prices, c.period, both_sides=both_sides)
-            if alt is None:
-                continue
-            cr = _build_combo(prices, [alt], mask_cache)
-            if cr is not None:
-                out.append(cr)
+            for alt in anchored_variants(prices, c.period, both_sides=both_sides):
+                cr = _build_combo(prices, [alt], mask_cache)
+                if cr is not None:
+                    out.append(cr)
         return out
 
     # Construit toutes les combinaisons valides (paires ET triples ensemble)
