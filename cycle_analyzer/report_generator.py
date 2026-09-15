@@ -421,8 +421,9 @@ def generate_report(
     # à un endroit différent — et on ne retire que les doublons EXACTS. Les
     # graphiques ne sont tracés que pour ces lignes.
     _seen_sig, _recap_top = set(), []
-    for c in sorted(list(combinations.get(1, [])) + sec2 + sec3 + secCourt,
-                    key=lambda r: r.total_return_pct, reverse=True):
+    _by_return = sorted(list(combinations.get(1, [])) + sec2 + sec3 + secCourt,
+                        key=lambda r: r.total_return_pct, reverse=True)
+    for c in _by_return:
         s = _sig(c)
         if s in _seen_sig:
             continue
@@ -430,6 +431,37 @@ def generate_report(
         _recap_top.append(c)
         if len(_recap_top) >= RECAP_MAX:
             break
+
+    # GARANTIE « chaque DÉPART distinct est représenté ». Un même cycle ancré à un
+    # creux plus tardif (donc « démarré plus tard ») est un cycle DIFFÉRENT : s'il a
+    # un bon rendement il doit figurer au récap même si le tri par rendement l'a
+    # relégué après les RECAP_MAX premiers — souvent monopolisés par un seul départ
+    # (plusieurs longueurs voisines ancrées au même creux). On ajoute donc, pour
+    # chaque départ ABSENT du top, son meilleur cycle simple s'il est à bon rendement.
+    def _anchor_key(c):
+        if len(c.cycles) != 1:
+            return None                       # une combinaison n'a pas de départ unique
+        a = getattr(c.cycles[0], "asym", None)
+        if not a:
+            return None                       # cycle symétrique : pas d'ancrage réel
+        return round(int(a[2]) / 30.0)        # regroupe les ancres d'un même creux
+    _repr = {_anchor_key(c) for c in _recap_top}
+    _repr.discard(None)
+    _floor = 0.30 * (_recap_top[0].total_return_pct if _recap_top else 0.0)
+    _champ: dict = {}                          # meilleur cycle simple par départ absent
+    for c in _by_return:                       # déjà trié par rendement décroissant
+        k = _anchor_key(c)
+        if k is None or k in _repr or k in _champ:
+            continue
+        if c.total_return_pct >= _floor:       # « bon rendement » = >= 30 % du meilleur
+            _champ[k] = c
+    for c in _champ.values():
+        s = _sig(c)
+        if s not in _seen_sig:
+            _seen_sig.add(s)
+            _recap_top.append(c)
+    # On garde l'affichage classé par RENDEMENT décroissant (champions inclus).
+    _recap_top.sort(key=lambda r: r.total_return_pct, reverse=True)
     _recap_ids = {id(c) for c in _recap_top}
     sec2 = [c for c in sec2 if id(c) in _recap_ids]
     sec3 = [c for c in sec3 if id(c) in _recap_ids]
