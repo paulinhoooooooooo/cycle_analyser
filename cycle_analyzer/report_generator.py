@@ -210,7 +210,8 @@ def _dedup_recap(combos: List[CombinationResult]) -> List[CombinationResult]:
 
 def _recap_table_html(combos: List[CombinationResult],
                       title: str = "Récapitulatif des combinaisons",
-                      charted: dict = None, anchor_id: str = None) -> str:
+                      charted: dict = None, anchor_id: str = None,
+                      presorted: bool = False) -> str:
     """Tableau récapitulatif compact de toutes les combinaisons affichées :
     cycles utilisés, rendement long & short, % de réussite long & short.
     `charted` : dict slug → id d'ancre de sa carte-graphique → la ligne devient
@@ -219,7 +220,10 @@ def _recap_table_html(combos: List[CombinationResult],
     if not combos:
         return ""
     charted = charted or {}
-    uniq = _dedup_recap(combos)
+    # presorted : la liste est déjà triée/sélectionnée (par rendement) en amont →
+    # on l'affiche telle quelle, sans re-trier ni re-dédupliquer (sinon on
+    # re-cacherait les variantes qu'on veut justement montrer).
+    uniq = list(combos) if presorted else _dedup_recap(combos)
     rows = ""
     for c in uniq:
         long_ret = c.total_return_pct
@@ -261,73 +265,6 @@ def _recap_table_html(combos: List[CombinationResult],
       <th class="chk-cell"><input type="checkbox" class="mask-all" title="Tout cocher / décocher"></th><th>Cycles utilisés</th><th>Long ↑</th><th>Short ↓</th>
       <th>% réussite long</th><th>% réussite short</th>
       <th>Zones (L / S)</th><th>Rdt moy/zone L</th><th>Rdt moy/zone S</th>
-    </tr></thead>
-    <tbody>{rows}</tbody>
-  </table>
-</div>"""
-
-
-def _window_stability(combo: CombinationResult, dates, n_windows: int = 3) -> list:
-    """Réussite Long & Short du MÊME cycle (même période, même ancre, même coupe
-    U/D) quand on DÉCALE le début : on retire les k zones les plus anciennes
-    (k = 0, 1, 2 …). Mêmes zones, fenêtre simplement plus tardive → montre que la
-    réussite dépend du début/fin, pas d'un cycle « fragile ».
-    Renvoie une liste de dicts {label, l_hit, l_n, s_hit, s_n}."""
-    bz = sorted(combo.zones, key=lambda z: z.start)
-    sz = sorted(combo.bearish_zones, key=lambda z: z.start)
-    out = []
-    for k in range(n_windows):
-        lb, ss = bz[k:], sz[k:]
-        if len(lb) < 2 or len(ss) < 2:      # trop peu de zones pour être parlant
-            break
-        l_hit = 100.0 * sum(1 for z in lb if z.return_pct > 0) / len(lb)
-        s_hit = 100.0 * sum(1 for z in ss if z.return_pct < 0) / len(ss)
-        idx = min(lb[0].start, ss[0].start)
-        idx = max(0, min(idx, len(dates) - 1))
-        out.append(dict(label=dates[idx].strftime("%d/%m/%Y"),
-                        l_hit=l_hit, l_n=len(lb), s_hit=s_hit, s_n=len(ss)))
-    return out
-
-
-def _stability_table_html(combos: List[CombinationResult], dates,
-                          anchor_id: str = None) -> str:
-    """Tableau « Robustesse par fenêtre de départ » : pour chaque cycle du récap,
-    sa réussite Long ET Short en décalant le début (mêmes zones, fenêtre plus
-    tardive)."""
-    if not combos:
-        return ""
-    uniq = _dedup_recap(combos)
-
-    def _cell(w) -> str:
-        if w is None:
-            return '<td style="color:var(--text2)">—</td>'
-        lc = "var(--green)" if w["l_hit"] >= 90 else "var(--text2)"
-        sc = "var(--green)" if w["s_hit"] >= 90 else "var(--text2)"
-        return (f'<td style="white-space:nowrap">'
-                f'<span style="color:var(--text2);font-size:11px">dès {w["label"]}</span><br>'
-                f'<span style="color:{lc}">L {w["l_hit"]:.0f}% ({w["l_n"]}z)</span> · '
-                f'<span style="color:{sc}">S {w["s_hit"]:.0f}% ({w["s_n"]}z)</span></td>')
-
-    rows = ""
-    for c in uniq:
-        wins = _window_stability(c, dates, n_windows=3)
-        if not wins:
-            continue
-        cells = "".join(_cell(wins[i] if i < len(wins) else None) for i in range(3))
-        rows += (f'<tr><td style="font-weight:600;color:#fff;white-space:nowrap">'
-                 f'{_combo_days_label(c)}</td>{cells}</tr>')
-    if not rows:
-        return ""
-    _idattr = f' id="{anchor_id}"' if anchor_id else ""
-    return f"""
-<h2{_idattr}>Robustesse par fenêtre de départ
-  <span style="font-size:11px;font-weight:400;color:var(--text2)">
-    &nbsp;— même cycle, même découpage : on retire les zones les plus anciennes (on « démarre plus tard »). Si la réussite tient, le cycle est solide ; sinon, c'est le choix du début/fin qui joue.
-  </span></h2>
-<div class="card" style="overflow-x:auto">
-  <table>
-    <thead><tr>
-      <th>Cycle</th><th>Départ réel</th><th>−1 zone (plus tard)</th><th>−2 zones (encore plus tard)</th>
     </tr></thead>
     <tbody>{rows}</tbody>
   </table>
@@ -468,8 +405,31 @@ def generate_report(
     # Les GRAPHIQUES ne sont tracés QUE pour ces lignes-là : les lignes du bas du
     # récap n'étaient jamais utilisées et généraient trop de graphiques.
     RECAP_MAX = 20
-    _recap_top = _dedup_recap(
-        list(combinations.get(1, [])) + sec2 + sec3 + secCourt)[:RECAP_MAX]
+
+    def _sig(c):
+        # signature EXACTE d'un cycle/combinaison : période + découpage (U/D) +
+        # ancrage de chacun de ses cycles → deux variantes d'une même période
+        # (départ/découpage différent) ont des signatures DIFFÉRENTES et sont
+        # toutes deux gardées.
+        return tuple(sorted(
+            (cy.period,) + (tuple(cy.asym) if getattr(cy, "asym", None) else ())
+            for cy in c.cycles))
+
+    # RÉCAPITULATIF = les RECAP_MAX cycles au MEILLEUR RENDEMENT (long), cycles
+    # simples ET combinaisons confondus. On garde TOUTES les variantes à bon
+    # rendement — y compris plusieurs versions d'une même période qui « démarrent »
+    # à un endroit différent — et on ne retire que les doublons EXACTS. Les
+    # graphiques ne sont tracés que pour ces lignes.
+    _seen_sig, _recap_top = set(), []
+    for c in sorted(list(combinations.get(1, [])) + sec2 + sec3 + secCourt,
+                    key=lambda r: r.total_return_pct, reverse=True):
+        s = _sig(c)
+        if s in _seen_sig:
+            continue
+        _seen_sig.add(s)
+        _recap_top.append(c)
+        if len(_recap_top) >= RECAP_MAX:
+            break
     _recap_ids = {id(c) for c in _recap_top}
     sec2 = [c for c in sec2 if id(c) in _recap_ids]
     sec3 = [c for c in sec3 if id(c) in _recap_ids]
@@ -610,11 +570,8 @@ def generate_report(
     # Tableau récapitulatif du HAUT : les RECAP_MAX meilleures propositions (les
     # mêmes que les graphiques ci-dessous — une ligne = un graphique).
     recap_html = _recap_table_html(
-        _recap_top, charted=_chart_anchor, anchor_id="recap",
+        _recap_top, charted=_chart_anchor, anchor_id="recap", presorted=True,
     )
-
-    # Robustesse : mêmes cycles que le récap, réussite L & S en décalant le début.
-    stability_html = _stability_table_html(_recap_top, dates)
 
     # Le récap du haut (plafonné à RECAP_MAX) sert désormais de référence unique :
     # on n'ajoute plus le grand tableau « Toutes les combinaisons proposées » (ses
@@ -876,8 +833,6 @@ document.addEventListener('DOMContentLoaded', function () {{
 {summary}
 
 {recap_html}
-
-{stability_html}
 
 <h2>Tableau Complet des Cycles</h2>
 <div class="card">
