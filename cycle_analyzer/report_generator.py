@@ -267,6 +267,73 @@ def _recap_table_html(combos: List[CombinationResult],
 </div>"""
 
 
+def _window_stability(combo: CombinationResult, dates, n_windows: int = 3) -> list:
+    """Réussite Long & Short du MÊME cycle (même période, même ancre, même coupe
+    U/D) quand on DÉCALE le début : on retire les k zones les plus anciennes
+    (k = 0, 1, 2 …). Mêmes zones, fenêtre simplement plus tardive → montre que la
+    réussite dépend du début/fin, pas d'un cycle « fragile ».
+    Renvoie une liste de dicts {label, l_hit, l_n, s_hit, s_n}."""
+    bz = sorted(combo.zones, key=lambda z: z.start)
+    sz = sorted(combo.bearish_zones, key=lambda z: z.start)
+    out = []
+    for k in range(n_windows):
+        lb, ss = bz[k:], sz[k:]
+        if len(lb) < 2 or len(ss) < 2:      # trop peu de zones pour être parlant
+            break
+        l_hit = 100.0 * sum(1 for z in lb if z.return_pct > 0) / len(lb)
+        s_hit = 100.0 * sum(1 for z in ss if z.return_pct < 0) / len(ss)
+        idx = min(lb[0].start, ss[0].start)
+        idx = max(0, min(idx, len(dates) - 1))
+        out.append(dict(label=dates[idx].strftime("%d/%m/%Y"),
+                        l_hit=l_hit, l_n=len(lb), s_hit=s_hit, s_n=len(ss)))
+    return out
+
+
+def _stability_table_html(combos: List[CombinationResult], dates,
+                          anchor_id: str = None) -> str:
+    """Tableau « Robustesse par fenêtre de départ » : pour chaque cycle du récap,
+    sa réussite Long ET Short en décalant le début (mêmes zones, fenêtre plus
+    tardive)."""
+    if not combos:
+        return ""
+    uniq = _dedup_recap(combos)
+
+    def _cell(w) -> str:
+        if w is None:
+            return '<td style="color:var(--text2)">—</td>'
+        lc = "var(--green)" if w["l_hit"] >= 90 else "var(--text2)"
+        sc = "var(--green)" if w["s_hit"] >= 90 else "var(--text2)"
+        return (f'<td style="white-space:nowrap">'
+                f'<span style="color:var(--text2);font-size:11px">dès {w["label"]}</span><br>'
+                f'<span style="color:{lc}">L {w["l_hit"]:.0f}% ({w["l_n"]}z)</span> · '
+                f'<span style="color:{sc}">S {w["s_hit"]:.0f}% ({w["s_n"]}z)</span></td>')
+
+    rows = ""
+    for c in uniq:
+        wins = _window_stability(c, dates, n_windows=3)
+        if not wins:
+            continue
+        cells = "".join(_cell(wins[i] if i < len(wins) else None) for i in range(3))
+        rows += (f'<tr><td style="font-weight:600;color:#fff;white-space:nowrap">'
+                 f'{_combo_days_label(c)}</td>{cells}</tr>')
+    if not rows:
+        return ""
+    _idattr = f' id="{anchor_id}"' if anchor_id else ""
+    return f"""
+<h2{_idattr}>Robustesse par fenêtre de départ
+  <span style="font-size:11px;font-weight:400;color:var(--text2)">
+    &nbsp;— même cycle, même découpage : on retire les zones les plus anciennes (on « démarre plus tard »). Si la réussite tient, le cycle est solide ; sinon, c'est le choix du début/fin qui joue.
+  </span></h2>
+<div class="card" style="overflow-x:auto">
+  <table>
+    <thead><tr>
+      <th>Cycle</th><th>Départ réel</th><th>−1 zone (plus tard)</th><th>−2 zones (encore plus tard)</th>
+    </tr></thead>
+    <tbody>{rows}</tbody>
+  </table>
+</div>"""
+
+
 def _combo_card_short_html(combo: CombinationResult, img_b64: str, rank: int) -> str:
     """Card variant that highlights short performance (used in short-optimised section)."""
     short_zones_html = "".join(
@@ -546,6 +613,9 @@ def generate_report(
         _recap_top, charted=_chart_anchor, anchor_id="recap",
     )
 
+    # Robustesse : mêmes cycles que le récap, réussite L & S en décalant le début.
+    stability_html = _stability_table_html(_recap_top, dates)
+
     # Le récap du haut (plafonné à RECAP_MAX) sert désormais de référence unique :
     # on n'ajoute plus le grand tableau « Toutes les combinaisons proposées » (ses
     # lignes du bas n'étaient jamais utilisées et alourdissaient la page).
@@ -806,6 +876,8 @@ document.addEventListener('DOMContentLoaded', function () {{
 {summary}
 
 {recap_html}
+
+{stability_html}
 
 <h2>Tableau Complet des Cycles</h2>
 <div class="card">
