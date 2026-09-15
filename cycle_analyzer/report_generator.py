@@ -400,7 +400,7 @@ def generate_report(
     # (cycles simples + paires + triples + courts, triées par qualité, dédupliquées).
     # Les GRAPHIQUES ne sont tracés QUE pour ces lignes-là : les lignes du bas du
     # récap n'étaient jamais utilisées et généraient trop de graphiques.
-    RECAP_MAX = 10
+    RECAP_MAX = 20
     _recap_top = _dedup_recap(
         list(combinations.get(1, [])) + sec2 + sec3 + secCourt)[:RECAP_MAX]
     _recap_ids = {id(c) for c in _recap_top}
