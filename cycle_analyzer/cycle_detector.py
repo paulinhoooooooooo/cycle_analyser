@@ -437,9 +437,11 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
                         up_hit=up_hit * 100.0, dn_hit=dn_hit * 100.0)
             if best is None or val > best["val"]:
                 best = cand
-            # Variante « la plus FIABLE » : maximise la réussite (min des deux
-            # côtés en bilatéral, sinon la hausse), départage par le rendement.
-            rel = min(up_hit, dn_hit) if both_sides else up_hit
+            # Variante « la plus FIABLE » : maximise la RÉUSSITE LONG (celle que
+            # l'utilisateur lit dans le récap), départage par le rendement. On se
+            # base sur le long même en bilatéral : un cycle 100 % en Long mais 67 %
+            # en Short reste précieux et doit être proposé à côté du plus rentable.
+            rel = up_hit
             rel_ret = (up_ret + dn_gain) if both_sides else up_ret
             if best_hit is None:
                 best_hit = (rel, rel_ret, cand)
@@ -452,11 +454,10 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
     variants = [best] if best else []
     if best is not None and best_hit is not None:
         hv = best_hit[2]
-        b_rel = min(best["up_hit"], best["dn_hit"]) if both_sides else best["up_hit"]
-        h_rel = min(hv["up_hit"], hv["dn_hit"]) if both_sides else hv["up_hit"]
-        # On ne garde la 2e variante que si elle est VRAIMENT plus fiable
+        # On ne garde la 2e variante que si elle est VRAIMENT plus fiable en LONG
         # (≥ 3 points de réussite en plus) ET distincte (autre découpage/ancrage).
-        if (hv["U"], hv["anchor"]) != (best["U"], best["anchor"]) and h_rel >= b_rel + 3.0:
+        if (hv["U"], hv["anchor"]) != (best["U"], best["anchor"]) and \
+                hv["up_hit"] >= best["up_hit"] + 3.0:
             variants.append(hv)
     return variants
 
