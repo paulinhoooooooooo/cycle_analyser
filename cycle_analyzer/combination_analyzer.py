@@ -719,7 +719,7 @@ def analyze_combinations(
         # dans le choix que si --bilateral (both_sides) est demandé.
         # symmetric=True quand --ancrage sans --asym → cycles 50/50.
         pool = pool + build_anchored_pool(prices, _periods, per_bucket=5,
-                                          max_add=16, both_sides=both_sides,
+                                          max_add=20, both_sides=both_sides,
                                           symmetric=(anchored and not asym))
 
     # Le pool contient-il des cycles ANCRÉS ? Si oui, on garantira que les combos
@@ -924,7 +924,7 @@ def analyze_combinations(
     # bilatérale de chaque période, UNIQUEMENT en cycle simple (pas d'explosion
     # combinatoire) → un très bon cycle simple est TOUJOURS proposé dans le récap.
     if (asym or anchored) and not both_sides:
-        for c in build_anchored_pool(prices, _periods, per_bucket=5, max_add=16,
+        for c in build_anchored_pool(prices, _periods, per_bucket=5, max_add=20,
                                      both_sides=True, symmetric=False):
             cr = _build_combo(prices, [c], mask_cache)
             if cr is not None and cr.total_return_pct > 0 and cr.hit_rate >= 80.0:

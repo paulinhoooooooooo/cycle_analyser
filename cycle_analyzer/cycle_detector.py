@@ -477,17 +477,42 @@ def build_anchored_pool(prices: np.ndarray, periods, per_bucket: int = 7,
         scored.append((b["val"], _anchored_ci(prices, p, b)))
     scored.sort(key=lambda x: x[0], reverse=True)
 
+    # Catégories de DURÉE. La catégorie « longue » est SOUS-DIVISÉE : la grille
+    # fine d'ancrage ajoute des dizaines de périodes toutes ≥ 200 barres. Si
+    # elles se partageaient un seul quota « long », les TRÈS longs cycles (plus
+    # gros rendement absolu par composition) rafleraient toutes les places et
+    # écraseraient les bons cycles MOYEN-LONGS (souvent plus robustes, plus de
+    # zones). Ex. URI start-2010 : 875-920 b monopolisaient et éjectaient le
+    # 640 b (~922 j). On sépare donc la plage longue en trois tranches.
     def _bucket(period: int) -> str:
-        return "court" if period <= 60 else ("moyen" if period <= 180 else "long")
+        if period <= 60:   return "court"
+        if period <= 180:  return "moyen"
+        if period <= 400:  return "long1"   # moyen-long
+        if period <= 700:  return "long2"   # long
+        if period <= 1100: return "long3"   # très long
+        return "long4"                      # extrême
+    BUCKETS = ("court", "moyen", "long1", "long2", "long3", "long4")
 
-    kept, counts = [], {"court": 0, "moyen": 0, "long": 0}
-    # 1er passage : au plus `per_bucket` par catégorie (les meilleurs de chaque).
+    # Regroupe par catégorie (chaque liste reste triée par score décroissant,
+    # car `scored` l'est déjà).
+    by_bucket = {}
     for val, ci in scored:
-        bkt = _bucket(ci.period)
-        if counts[bkt] < per_bucket:
-            kept.append((val, ci))
-            counts[bkt] += 1
-    # 2e passage : complète avec les meilleurs restants, toutes catégories.
+        by_bucket.setdefault(_bucket(ci.period), []).append((val, ci))
+    # Sélection en ROUND-ROBIN : à chaque tour on prend le meilleur cycle encore
+    # disponible de CHAQUE catégorie (jusqu'à `per_bucket` tours). Garantit que
+    # chaque tranche de durée est représentée, même sous un plafond `max_add`
+    # serré → un bon cycle moyen-long n'est plus évincé par un cycle extrême.
+    kept = []
+    for r in range(per_bucket):
+        for b in BUCKETS:
+            lst = by_bucket.get(b)
+            if lst and len(lst) > r:
+                kept.append(lst[r])
+                if len(kept) >= max_add:
+                    break
+        if len(kept) >= max_add:
+            break
+    # Complète les places restantes avec les meilleurs cycles encore non pris.
     if len(kept) < max_add:
         chosen = {id(ci) for _, ci in kept}
         for val, ci in scored:
