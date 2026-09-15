@@ -917,6 +917,18 @@ def analyze_combinations(
         cr = _build_combo(prices, [c], mask_cache)
         if cr is not None and cr.total_return_pct > 0 and cr.hit_rate >= 80.0:
             _singles.append(cr)
+    # Cycles ANCRÉS BILATÉRAUX en cycles SIMPLES : sans --bilateral, l'ancrage
+    # n'optimise que la hausse (both_sides=False), donc un cycle unique excellent
+    # des DEUX côtés (ex. ~1304 : 100% L / 100% S) n'est jamais construit et
+    # n'apparaît qu'avec --bilateral. On évalue donc aussi la variante ancrée
+    # bilatérale de chaque période, UNIQUEMENT en cycle simple (pas d'explosion
+    # combinatoire) → un très bon cycle simple est TOUJOURS proposé dans le récap.
+    if (asym or anchored) and not both_sides:
+        for c in build_anchored_pool(prices, _periods, per_bucket=5, max_add=16,
+                                     both_sides=True, symmetric=False):
+            cr = _build_combo(prices, [c], mask_cache)
+            if cr is not None and cr.total_return_pct > 0 and cr.hit_rate >= 80.0:
+                _singles.append(cr)
     _singles.sort(key=lambda r: r.total_return_pct, reverse=True)
     results[1] = _best_variants(_singles, lambda c: c.total_return_pct,
                                 lambda c: c.hit_rate, lambda c: c.n_zones)[:top_n_per_size]
