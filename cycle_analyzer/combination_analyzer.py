@@ -8,7 +8,7 @@ import numpy as np
 
 from .cycle_detector import (
     CycleInfo, get_bullish_mask, _detrend_log, _fit_sine, _phase_state,
-    build_asym_pool, build_anchored_pool,
+    build_asym_pool, build_anchored_pool, anchored_hit_variant,
 )
 
 
@@ -740,6 +740,26 @@ def analyze_combinations(
     mask_cache: dict = {c.period: get_bullish_mask(prices, c.period)
                         for c in pool if getattr(c, "bull_mask", None) is None}
 
+    def _hit_variant_singles() -> List[CombinationResult]:
+        """Pour chaque cycle ANCRÉ retenu, sa variante « la plus FIABLE » (max
+        réussite) évaluée en cycle SIMPLE — en plus de la variante « la plus
+        rentable » déjà dans le pool. On propose ainsi, pour une même période, la
+        version robuste ET la version rentable ; le dédup garde les deux quand
+        elles ne se dominent pas. Peu coûteux (uniquement les périodes retenues)."""
+        out: List[CombinationResult] = []
+        seen_periods = set()
+        for c in pool:
+            if getattr(c, "bull_mask", None) is None or c.period in seen_periods:
+                continue
+            seen_periods.add(c.period)
+            alt = anchored_hit_variant(prices, c.period, both_sides=both_sides)
+            if alt is None:
+                continue
+            cr = _build_combo(prices, [alt], mask_cache)
+            if cr is not None:
+                out.append(cr)
+        return out
+
     # Construit toutes les combinaisons valides (paires ET triples ensemble)
     all_valid: List[CombinationResult] = []
     for size in (2, 3):
@@ -840,6 +860,7 @@ def analyze_combinations(
             cr = _build_combo(prices, [c], mask_cache)
             if cr is not None:
                 singles_all.append(cr)
+        singles_all += _hit_variant_singles()   # + variante max-réussite par période
         singles_long = [c for c in singles_all if _keep_l(c)]
         singles_short = [c for c in singles_all if _keep_s(c)]
 
@@ -928,6 +949,11 @@ def analyze_combinations(
                                      both_sides=True, symmetric=False):
             cr = _build_combo(prices, [c], mask_cache)
             if cr is not None and cr.total_return_pct > 0 and cr.hit_rate >= 80.0:
+                _singles.append(cr)
+    # + variante « la plus FIABLE » (max réussite) de chaque cycle ancré retenu.
+    if asym or anchored:
+        for cr in _hit_variant_singles():
+            if cr.total_return_pct > 0 and cr.hit_rate >= 80.0:
                 _singles.append(cr)
     _singles.sort(key=lambda r: r.total_return_pct, reverse=True)
     results[1] = _best_variants(_singles, lambda c: c.total_return_pct,

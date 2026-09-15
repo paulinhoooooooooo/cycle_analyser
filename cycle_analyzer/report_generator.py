@@ -182,21 +182,11 @@ def _summary_html(
 </div>"""
 
 
-def _recap_table_html(combos: List[CombinationResult],
-                      title: str = "Récapitulatif des combinaisons",
-                      charted: dict = None, anchor_id: str = None) -> str:
-    """Tableau récapitulatif compact de toutes les combinaisons affichées :
-    cycles utilisés, rendement long & short, % de réussite long & short.
-    `charted` : dict slug → id d'ancre de sa carte-graphique → la ligne devient
-    un lien cliquable qui y saute. `anchor_id` : ancre HTML posée sur le titre
-    (cible du bouton « retour au récapitulatif »)."""
-    if not combos:
-        return ""
-    charted = charted or {}
-    # Déduplication des QUASI-DOUBLONS (cycles à ~18% près, ex: 201+136 / 199+136).
-    # Une combinaison n'est masquée que si un quasi-jumeau déjà gardé la DOMINE à la
-    # fois sur le long (rendement, réussite, zones) ET sur le short — sinon elle
-    # apporte quelque chose (championne dans au moins une direction) et est gardée.
+def _dedup_recap(combos: List[CombinationResult]) -> List[CombinationResult]:
+    """Trie par qualité décroissante puis retire les QUASI-DOUBLONS (cycles à
+    ~18% près). Une combinaison n'est masquée que si un quasi-jumeau déjà gardé
+    la DOMINE à la fois sur le long ET sur le short — sinon elle apporte quelque
+    chose (championne dans au moins une direction) et est gardée."""
     uniq: List[CombinationResult] = []
     for c in sorted(combos, key=lambda r: combo_quality(r), reverse=True):
         sims = [k for k in uniq if _combos_too_similar(c.periods, k.periods)]
@@ -215,6 +205,21 @@ def _recap_table_html(combos: List[CombinationResult],
             if dom_long and dom_short:
                 continue
         uniq.append(c)
+    return uniq
+
+
+def _recap_table_html(combos: List[CombinationResult],
+                      title: str = "Récapitulatif des combinaisons",
+                      charted: dict = None, anchor_id: str = None) -> str:
+    """Tableau récapitulatif compact de toutes les combinaisons affichées :
+    cycles utilisés, rendement long & short, % de réussite long & short.
+    `charted` : dict slug → id d'ancre de sa carte-graphique → la ligne devient
+    un lien cliquable qui y saute. `anchor_id` : ancre HTML posée sur le titre
+    (cible du bouton « retour au récapitulatif »)."""
+    if not combos:
+        return ""
+    charted = charted or {}
+    uniq = _dedup_recap(combos)
     rows = ""
     for c in uniq:
         long_ret = c.total_return_pct
@@ -387,11 +392,21 @@ def generate_report(
     _hist_days = int((dates[-1] - dates[0]).days)
     _DPB = _hist_days / max(n_bars - 1, 1)
 
-    # Sections avec GRAPHIQUES : on trace TOUTES les combinaisons du récapitulatif
-    # (plus de plafond), pour que chaque ligne cliquable ait bien son graphique.
     sec2 = combinations.get(2, [])
     sec3 = combinations.get(3, [])
     secCourt = combinations.get("court", [])
+
+    # RÉCAPITULATIF PLAFONNÉ : on ne garde que les RECAP_MAX meilleures propositions
+    # (cycles simples + paires + triples + courts, triées par qualité, dédupliquées).
+    # Les GRAPHIQUES ne sont tracés QUE pour ces lignes-là : les lignes du bas du
+    # récap n'étaient jamais utilisées et généraient trop de graphiques.
+    RECAP_MAX = 10
+    _recap_top = _dedup_recap(
+        list(combinations.get(1, [])) + sec2 + sec3 + secCourt)[:RECAP_MAX]
+    _recap_ids = {id(c) for c in _recap_top}
+    sec2 = [c for c in sec2 if id(c) in _recap_ids]
+    sec3 = [c for c in sec3 if id(c) in _recap_ids]
+    secCourt = [c for c in secCourt if id(c) in _recap_ids]
 
     short_combos = combinations.get("short_2", []) + combinations.get("short_3", [])
     # 3 meilleures combinaisons SHORT (par rendement short), dédupliquées
@@ -420,9 +435,9 @@ def generate_report(
     #  - sinon (défaut) : les cycles simples à réussite >= 80%.
     # Y a-t-il un filtre actif ? (pour le titre de la section cycles simples)
     _filtered = any(tag in options_note for tag in ("--rendement", "--reussite", "--zone", "--court"))
-    # Cycles simples affichés = results[1] (construit dans les deux modes, classé par
-    # rendement) → cartes et récap montrent EXACTEMENT les mêmes cycles simples.
-    _single_combos = combinations.get(1, [])
+    # Cycles simples affichés = ceux de results[1] RETENUS dans le récap plafonné
+    # → cartes et récap montrent EXACTEMENT les mêmes cycles simples.
+    _single_combos = [c for c in combinations.get(1, []) if id(c) in _recap_ids]
     # On garde le cycle RÉELLEMENT utilisé par la combo (sc.cycles[0]) : c'est lui
     # qui porte l'éventuelle asymétrie (masque + ↑U/↓D). Ne PAS le remplacer par un
     # cycle symétrique de même période (sinon un cycle simple asym plus performant
@@ -525,24 +540,16 @@ def generate_report(
     for c in short_top:
         _chart_anchor.setdefault(_combo_slug(c.periods), "cs-" + _combo_slug(c.periods))
 
-    # Tableau récapitulatif du HAUT : combinaisons long proposées, cycles UNIQUES
-    # inclus (ceux qui passent le filtre) + paires + triples + courts.
+    # Tableau récapitulatif du HAUT : les RECAP_MAX meilleures propositions (les
+    # mêmes que les graphiques ci-dessous — une ligne = un graphique).
     recap_html = _recap_table_html(
-        combinations.get(1, []) + combinations.get(2, [])
-        + combinations.get(3, []) + combinations.get("court", []),
-        charted=_chart_anchor, anchor_id="recap",
+        _recap_top, charted=_chart_anchor, anchor_id="recap",
     )
 
-    # Tableau FINAL (bas de page) : TOUTES les combinaisons proposées, tous types
-    # confondus — cycle unique, double, triple, cycles courts ET short.
-    all_proposed = (
-        combinations.get(1, []) + combinations.get(2, []) + combinations.get(3, [])
-        + combinations.get("court", [])
-        + combinations.get("short_1", [])
-        + combinations.get("short_2", []) + combinations.get("short_3", [])
-    )
-    recap_full_html = _recap_table_html(all_proposed, title="Toutes les combinaisons proposées",
-                                        charted=_chart_anchor)
+    # Le récap du haut (plafonné à RECAP_MAX) sert désormais de référence unique :
+    # on n'ajoute plus le grand tableau « Toutes les combinaisons proposées » (ses
+    # lignes du bas n'étaient jamais utilisées et alourdissaient la page).
+    recap_full_html = ""
 
     table_rows = "\n".join(_cycle_row_html(c) for c in cycles)
 

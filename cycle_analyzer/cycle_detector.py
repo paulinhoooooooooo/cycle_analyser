@@ -370,7 +370,8 @@ def _anchor_troughs(prices: np.ndarray, P: int, max_anchors: int = 12) -> List[i
 
 def detect_anchored_cycle(prices: np.ndarray, period: float,
                           u_lo: float = 0.20, u_hi: float = 0.88,
-                          both_sides: bool = False, symmetric: bool = False):
+                          both_sides: bool = False, symmetric: bool = False,
+                          return_variants: bool = False):
     """CYCLE RÉGULIER ANCRÉ. Cherche conjointement le découpage U (hausse) /
     D (baisse) ET l'ANCRAGE `a` (un vrai plus-bas d'où le cycle est projeté vers
     l'avant) qui maximise le rendement.
@@ -401,7 +402,8 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
         lo, hi = max(2, int(P * u_lo)), min(P - 2, int(P * u_hi))
         step = max(1, P // 80)
         u_range = range(lo, hi + 1, step)
-    best = None
+    best = None       # variante qui maximise le RENDEMENT (× réussite)
+    best_hit = None   # variante qui maximise la RÉUSSITE (puis le rendement)
     for U in u_range:
         for a in anchors:
             up_ret = dn_gain = 0.0
@@ -430,11 +432,33 @@ def detect_anchored_cycle(prices: np.ndarray, period: float,
                 val = (up_ret + dn_gain) * min(up_hit, dn_hit)   # hausse ET baisse
             else:
                 val = up_ret * up_hit                            # HAUSSE uniquement
+            cand = dict(val=val, U=U, D=P - U, anchor=a,
+                        up_ret=up_ret * 100.0, dn_gain=dn_gain * 100.0,
+                        up_hit=up_hit * 100.0, dn_hit=dn_hit * 100.0)
             if best is None or val > best["val"]:
-                best = dict(val=val, U=U, D=P - U, anchor=a,
-                            up_ret=up_ret * 100.0, dn_gain=dn_gain * 100.0,
-                            up_hit=up_hit * 100.0, dn_hit=dn_hit * 100.0)
-    return best
+                best = cand
+            # Variante « la plus FIABLE » : maximise la réussite (min des deux
+            # côtés en bilatéral, sinon la hausse), départage par le rendement.
+            rel = min(up_hit, dn_hit) if both_sides else up_hit
+            rel_ret = (up_ret + dn_gain) if both_sides else up_ret
+            if best_hit is None:
+                best_hit = (rel, rel_ret, cand)
+            else:
+                bh_rel, bh_ret, _ = best_hit
+                if rel > bh_rel or (rel == bh_rel and rel_ret > bh_ret):
+                    best_hit = (rel, rel_ret, cand)
+    if not return_variants:
+        return best
+    variants = [best] if best else []
+    if best is not None and best_hit is not None:
+        hv = best_hit[2]
+        b_rel = min(best["up_hit"], best["dn_hit"]) if both_sides else best["up_hit"]
+        h_rel = min(hv["up_hit"], hv["dn_hit"]) if both_sides else hv["up_hit"]
+        # On ne garde la 2e variante que si elle est VRAIMENT plus fiable
+        # (≥ 3 points de réussite en plus) ET distincte (autre découpage/ancrage).
+        if (hv["U"], hv["anchor"]) != (best["U"], best["anchor"]) and h_rel >= b_rel + 3.0:
+            variants.append(hv)
+    return variants
 
 
 def _anchored_ci(prices: np.ndarray, period: int, b: dict) -> "CycleInfo":
@@ -453,6 +477,18 @@ def _anchored_ci(prices: np.ndarray, period: int, b: dict) -> "CycleInfo":
         coeff_a=0.0, coeff_b=0.0, bull_mask=bull, asym=(U, D, a),
         active_start=int(a), bear_mask=bear,
     )
+
+
+def anchored_hit_variant(prices: np.ndarray, period, both_sides: bool = False):
+    """Renvoie la variante ANCRÉE qui MAXIMISE LA RÉUSSITE pour cette période
+    (au lieu du rendement), sous forme de CycleInfo — quand elle diffère nettement
+    de la variante par défaut (max-rendement). Sert à proposer, pour une même
+    période, la version la plus FIABLE en plus de la plus rentable. Sinon None."""
+    variants = detect_anchored_cycle(prices, period, both_sides=both_sides,
+                                     return_variants=True)
+    if variants and len(variants) > 1:
+        return _anchored_ci(prices, int(round(period)), variants[1])
+    return None
 
 
 def build_anchored_pool(prices: np.ndarray, periods, per_bucket: int = 7,
