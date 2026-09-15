@@ -61,3 +61,20 @@ for lab, lret, sret, lhit, shit in rows:
 
 has930 = any("930" in re.sub(r"<[^>]+>", "", r[0]) for r in rows)
 print(f"\n=> un cycle « 930 » est-il présent dans le récap ? {'OUI' if has930 else 'NON'}")
+
+# Détail des CYCLES SIMPLES retenus, avec leur ANCRAGE (barre + date) → pour voir
+# les variantes d'une même période ancrées à des DÉBUTS différents.
+print("\nCYCLES SIMPLES retenus (results[1]) — période, découpage, ANCRAGE :")
+for cr in combos.get(1, []):
+    cy = cr.cycles[0]
+    a = getattr(cy, "asym", None)
+    if a:
+        U, D, anchor = a
+        anchor = int(anchor)
+        d = dates[anchor].strftime("%d/%m/%Y") if 0 <= anchor < len(dates) else "?"
+        info = f"↑{U}/↓{D} ancre=barre {anchor} ({d})"
+    else:
+        info = "symétrique"
+    print(f"  {cy.period:5} b  {info:38}  Long {cr.total_return_pct:+7.0f}% "
+          f"({cr.hit_rate:.0f}%)  Short {-cr.bearish_total_return_pct:+6.0f}% "
+          f"({cr.bearish_hit_rate:.0f}%)")
