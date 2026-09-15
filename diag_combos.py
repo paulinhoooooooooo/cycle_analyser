@@ -54,4 +54,32 @@ for mode, kw in [("BILATERAL (scan)", dict(both_sides=True)),
                 print(line)
     print(f"  --> combo cible ~{target} : "
           + ("\n".join(hits) if hits else "ABSENTE des résultats") + "\n")
+
+# --- Détail : variantes ancrées brutes pour chaque période cible ---
+from cycle_analyzer.cycle_detector import detect_anchored_cycle
+print("===== VARIANTES ANCRÉES par période cible (detect_anchored_cycle) =====")
+for p in target:
+    for bs in (False, True):
+        vs = detect_anchored_cycle(prices, p, both_sides=bs, return_variants=True)
+        tag = "bilat" if bs else "long "
+        if not vs:
+            print(f"  P={p} [{tag}] : aucune")
+            continue
+        for i, v in enumerate(vs):
+            print(f"  P={p} [{tag}] var{i}: U={v['U']}/D={v['D']} anchor={v['anchor']} "
+                  f"Long +{v['up_ret']:.0f}% ({v['up_hit']:.0f}%) · "
+                  f"Short +{v['dn_gain']:.0f}% ({v['dn_hit']:.0f}%)")
+print()
+
+# --- Cycles SIMPLES effectivement retenus dans le récap (results[1]) ---
+print("===== CYCLES SIMPLES retenus (results[1]) =====")
+for mode, kw in [("DEFAUT (--asym)", dict(both_sides=False)),
+                 ("BILATERAL", dict(both_sides=True))]:
+    res = analyze_combinations(prices, cycles, top_n_per_size=20, asym=True, **kw)
+    print(f"  --- {mode} ---")
+    for cr in res.get(1, []) or []:
+        print(f"    {_lab(cr):22} Long {cr.total_return_pct:+6.0f}% "
+              f"({cr.hit_rate:3.0f}%, {cr.n_zones}z) · "
+              f"Short {-cr.bearish_total_return_pct:+6.0f}% "
+              f"({cr.bearish_hit_rate:3.0f}%, {len(cr.bearish_zones)}z)")
 print("Terminé.")
