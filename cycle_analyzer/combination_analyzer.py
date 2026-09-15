@@ -955,11 +955,21 @@ def analyze_combinations(
             if cr.total_return_pct > 0 and cr.hit_rate >= 80.0:
                 _singles.append(cr)
     _singles.sort(key=lambda r: r.total_return_pct, reverse=True)
-    results[1] = _best_variants(_singles, lambda c: c.total_return_pct,
-                                lambda c: c.hit_rate, lambda c: c.n_zones)[:top_n_per_size]
-    if _has_anchored:
-        results[1] = _ensure_classics(results[1], _singles, lambda c: c.total_return_pct,
-                                      lambda c: c.hit_rate, max(2, top_n_per_size // 2 + 1), 0.0)
+    # On garde TOUTES les variantes DISTINCTES (période + découpage + ancrage),
+    # triées par rendement — PAS de dédup par « domination » qui écartait un cycle
+    # meilleur en short ou ancré à un AUTRE début (ex. le même 930 j démarré plus
+    # tard, 100 %/100 %, éliminé car « dominé » en long par la version ancrée tôt).
+    # Seuls les doublons EXACTS sont retirés.
+    _seen_s, _uniq_s = set(), []
+    for cr in _singles:
+        s = tuple(sorted(
+            (cy.period,) + (tuple(cy.asym) if getattr(cy, "asym", None) else ())
+            for cy in cr.cycles))
+        if s in _seen_s:
+            continue
+        _seen_s.add(s)
+        _uniq_s.append(cr)
+    results[1] = _uniq_s[:max(top_n_per_size, 16)]
 
     # Résumé du haut : les 3 meilleures COMBINAISONS (jamais un cycle simple).
     results["diverse"] = pick_diverse(results[2] + results[3] + results["court"],
