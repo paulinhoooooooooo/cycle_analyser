@@ -598,7 +598,7 @@ Exemples :
         if args.recent is not None:
             _recency = args.recent if args.recent and args.recent > 0 else max(30.0, len(prices) / 4.0)
         _min_hit = args.reussite if args.reussite is not None else None
-        combinations = analyze_combinations(prices, cycles, top_n_per_size=3,
+        combinations = analyze_combinations(prices, cycles, top_n_per_size=12,
                                             recency_halflife=_recency, min_hit=_min_hit,
                                             min_zones=args.zone, min_return=args.rendement,
                                             max_period=args.court, both_sides=args.bilateral,
