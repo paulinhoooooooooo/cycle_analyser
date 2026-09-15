@@ -969,7 +969,10 @@ def analyze_combinations(
             continue
         _seen_s.add(s)
         _uniq_s.append(cr)
-    results[1] = _uniq_s[:max(top_n_per_size, 16)]
+    # On laisse PASSER largement de variantes distinctes : c'est le récap (tri par
+    # rendement, top 20) qui fait la sélection finale. Sinon une variante ancrée
+    # plus tard (rendement un peu plus bas mais 100 %/100 %) serait coupée ici.
+    results[1] = _uniq_s[:40]
 
     # Résumé du haut : les 3 meilleures COMBINAISONS (jamais un cycle simple).
     results["diverse"] = pick_diverse(results[2] + results[3] + results["court"],
