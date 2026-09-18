@@ -283,12 +283,19 @@ def _prune_dominated_singles(cands: List[CombinationResult]) -> List[Combination
                 and -k.bearish_total_return_pct >= -c.bearish_total_return_pct
                 and k.bearish_hit_rate >= c.bearish_hit_rate)
 
+    def _close(c, k):
+        # « proches » = MOINS de 10 % d'écart, rapporté au PLUS GRAND des deux.
+        # Ex. 120 j vs 112 j : écart 8 < 12 (10 % de 120) → proches ;
+        #     112 j vs 100 j : écart 12 > 11,2 (10 % de 112) → PAS proches.
+        pc, pk = float(c.cycles[0].period), float(k.cycles[0].period)
+        return abs(pc - pk) < 0.10 * max(pc, pk)
+
     kept: List[CombinationResult] = []
     for c in cands:
         sk = _start_key(c)
         redundant = any(
             _start_key(k) == sk
-            and _combos_too_similar(c.periods, k.periods)
+            and _close(c, k)
             and _dominates(k, c)
             for k in kept)
         if not redundant:
