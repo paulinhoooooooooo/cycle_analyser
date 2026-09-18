@@ -82,10 +82,38 @@ def _is_cycle_whole(c: CycleInfo) -> bool:
     return tot > 0 and abs(U - D) <= 0.10 * tot
 
 
+def _cycle_whole_kind(c: CycleInfo):
+    """Classe un cycle : 'parfait' (hausse = baisse au barreau près, ou cycle
+    symétrique), 'presque' (à ±10 % près sans être exact), ou None (déséquilibré)."""
+    a = getattr(c, "asym", None)
+    if not a:
+        return "parfait"                       # symétrique = parfaitement entier
+    U, D = float(a[0]), float(a[1])
+    tot = U + D
+    if tot <= 0:
+        return None
+    if round(U) == round(D):
+        return "parfait"
+    if abs(U - D) <= 0.10 * tot:
+        return "presque"
+    return None
+
+
+def _combo_whole_kind(combo):
+    """'parfait' si TOUS les cycles sont parfaitement entiers ; 'presque' si tous
+    sont entiers mais au moins un seulement approximativement ; None sinon."""
+    cycles = getattr(combo, "cycles", None)
+    if not cycles:
+        return None
+    kinds = [_cycle_whole_kind(cy) for cy in cycles]
+    if any(k is None for k in kinds):
+        return None
+    return "parfait" if all(k == "parfait" for k in kinds) else "presque"
+
+
 def _combo_is_whole(combo) -> bool:
     """Une proposition est « entière » si TOUS les cycles qui la composent le sont."""
-    return bool(getattr(combo, "cycles", None)) and all(
-        _is_cycle_whole(cy) for cy in combo.cycles)
+    return _combo_whole_kind(combo) is not None
 
 
 def _cycle_title(c: CycleInfo) -> str:
@@ -302,16 +330,22 @@ def _recap_table_html(combos: List[CombinationResult],
         _anchor = charted.get(_slug)
         _cell = (f'<a class="combo-link" href="#{_anchor}" data-combo="{_slug}" '
                  f'title="Aller au graphique">{_lab}</a>') if _anchor else _lab
-        # ★ = cycle ENTIER (autant de hausse que de baisse) → repérage rapide.
+        # Étoile = cycle ENTIER (autant de hausse que de baisse) → repérage rapide.
+        #   ★ pleine blanche  = parfaitement symétrique (hausse = baisse)
+        #   ☆ contour blanc   = presque symétrique (à ±10 % près)
         _star = ""
-        if _combo_is_whole(c):
+        _kind = _combo_whole_kind(c)
+        if _kind is not None:
             _detail = " · ".join(
                 (f"↑{_d(cy.asym[0])}/↓{_d(cy.asym[1])} j"
                  if getattr(cy, "asym", None) else f"{_d(cy.period)} j symétrique")
                 for cy in c.cycles)
-            _star = (f' <span class="whole-star" style="color:#e3b341" '
-                     f'title="Cycle entier — autant de hausse que de baisse '
-                     f'({_detail})">★</span>')
+            _glyph = "★" if _kind == "parfait" else "☆"
+            _tip = ("Cycle parfaitement entier — autant de hausse que de baisse"
+                    if _kind == "parfait" else
+                    "Cycle presque entier — hausse ≈ baisse (à ±10 %)")
+            _star = (f' <span class="whole-star" style="color:#fff;font-size:9px;'
+                     f'vertical-align:1px" title="{_tip} ({_detail})">{_glyph}</span>')
         rows += f"""
         <tr class="draggable-row" draggable="true">
           <td class="chk-cell"><input type="checkbox" class="mask-chk" data-combo="{_slug}" title="Masquer le graphique de cette combinaison plus bas"></td>
@@ -328,7 +362,7 @@ def _recap_table_html(combos: List[CombinationResult],
     return f"""
 <h2{_idattr}>{title}
   <span style="font-size:11px;font-weight:400;color:var(--text2)">
-    &nbsp;— cliquez une combinaison pour aller à son graphique · glissez la poignée ⠿ pour réordonner · cochez la case pour masquer le graphique · <span style="color:#e3b341">★</span> = cycle entier (autant de hausse que de baisse).
+    &nbsp;— cliquez une combinaison pour aller à son graphique · glissez la poignée ⠿ pour réordonner · cochez la case pour masquer le graphique · <span style="color:#fff">★</span> = cycle parfaitement entier (hausse = baisse), <span style="color:#fff">☆</span> = presque entier (±10 %).
   </span></h2>""" + f"""
 <div class="card">
   <table>
