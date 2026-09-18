@@ -65,6 +65,29 @@ def _cycle_period_label(c: CycleInfo) -> str:
     return f"{_d(c.period)} j ↑{_d(a[0])}/↓{_d(a[1])}" if a else f"{_d(c.period)} j"
 
 
+def _leg_split(c: CycleInfo):
+    """(U, D) en barres d'un cycle = son découpage hausse / baisse. Un cycle
+    symétrique (sans masque) est traité comme moitié-moitié."""
+    a = getattr(c, "asym", None)
+    if a:
+        return float(a[0]), float(a[1])
+    return c.period / 2.0, c.period / 2.0
+
+
+def _is_cycle_whole(c: CycleInfo) -> bool:
+    """Cycle « ENTIER » = autant de jours de hausse que de baisse (à ±10 % de la
+    période près). Un cycle symétrique l'est par construction."""
+    U, D = _leg_split(c)
+    tot = U + D
+    return tot > 0 and abs(U - D) <= 0.10 * tot
+
+
+def _combo_is_whole(combo) -> bool:
+    """Une proposition est « entière » si TOUS les cycles qui la composent le sont."""
+    return bool(getattr(combo, "cycles", None)) and all(
+        _is_cycle_whole(cy) for cy in combo.cycles)
+
+
 def _cycle_title(c: CycleInfo) -> str:
     """Titre LONG d'un cycle simple (carte), en JOURS : asymétrique → détaille
     hausse/baisse."""
@@ -241,10 +264,20 @@ def _recap_table_html(combos: List[CombinationResult],
         _anchor = charted.get(_slug)
         _cell = (f'<a class="combo-link" href="#{_anchor}" data-combo="{_slug}" '
                  f'title="Aller au graphique">{_lab}</a>') if _anchor else _lab
+        # ★ = cycle ENTIER (autant de hausse que de baisse) → repérage rapide.
+        _star = ""
+        if _combo_is_whole(c):
+            _detail = " · ".join(
+                (f"↑{_d(cy.asym[0])}/↓{_d(cy.asym[1])} j"
+                 if getattr(cy, "asym", None) else f"{_d(cy.period)} j symétrique")
+                for cy in c.cycles)
+            _star = (f' <span class="whole-star" style="color:#e3b341" '
+                     f'title="Cycle entier — autant de hausse que de baisse '
+                     f'({_detail})">★</span>')
         rows += f"""
         <tr class="draggable-row" draggable="true">
           <td class="chk-cell"><input type="checkbox" class="mask-chk" data-combo="{_slug}" title="Masquer le graphique de cette combinaison plus bas"></td>
-          <td style="font-weight:600;color:#fff"><span class="drag-grip" title="Glisser pour réordonner">⠿</span>{_cell}</td>
+          <td style="font-weight:600;color:#fff"><span class="drag-grip" title="Glisser pour réordonner">⠿</span>{_cell}{_star}</td>
           <td style="color:{long_col}">{long_ret:+.1f}%</td>
           <td style="color:{short_col}">{short_ret:+.1f}%</td>
           <td style="color:var(--text2)">{c.hit_rate:.0f}%</td>
@@ -257,7 +290,7 @@ def _recap_table_html(combos: List[CombinationResult],
     return f"""
 <h2{_idattr}>{title}
   <span style="font-size:11px;font-weight:400;color:var(--text2)">
-    &nbsp;— cliquez une combinaison pour aller à son graphique · glissez la poignée ⠿ pour réordonner · cochez la case pour masquer le graphique.
+    &nbsp;— cliquez une combinaison pour aller à son graphique · glissez la poignée ⠿ pour réordonner · cochez la case pour masquer le graphique · <span style="color:#e3b341">★</span> = cycle entier (autant de hausse que de baisse).
   </span></h2>""" + f"""
 <div class="card">
   <table>
