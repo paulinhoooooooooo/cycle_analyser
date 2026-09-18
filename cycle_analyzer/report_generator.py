@@ -285,9 +285,12 @@ def _prune_dominated_singles(cands: List[CombinationResult]) -> List[Combination
 
     def _close(c, k):
         # « proches » = MOINS de 10 % d'écart, rapporté au PLUS GRAND des deux.
+        # On compare les JOURS AFFICHÉS (via _d), pas les barres internes : sinon
+        # l'arrondi barres→jours fausse le résultat à la limite (ex. 105 j / 117 j
+        # = 73 / 81 barres, « proches » en barres mais PAS en jours).
         # Ex. 120 j vs 112 j : écart 8 < 12 (10 % de 120) → proches ;
-        #     112 j vs 100 j : écart 12 > 11,2 (10 % de 112) → PAS proches.
-        pc, pk = float(c.cycles[0].period), float(k.cycles[0].period)
+        #     117 j vs 105 j : écart 12 > 11,7 (10 % de 117) → PAS proches.
+        pc, pk = _d(c.cycles[0].period), _d(k.cycles[0].period)
         return abs(pc - pk) < 0.10 * max(pc, pk)
 
     kept: List[CombinationResult] = []
