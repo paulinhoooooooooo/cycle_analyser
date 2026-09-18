@@ -231,6 +231,44 @@ def _dedup_recap(combos: List[CombinationResult]) -> List[CombinationResult]:
     return uniq
 
 
+def _prune_dominated_singles(cands: List[CombinationResult]) -> List[CombinationResult]:
+    """Retire les cycles SIMPLES redondants. Deux cycles qui DÉMARRENT au même
+    creux ET de période quasi identique, dont l'un est DOMINÉ par l'autre sur les
+    QUATRE plans (rendement long, réussite long, rendement short, réussite short),
+    sont le même cycle à une découpe près : on ne garde que le meilleur.
+
+    On CONSERVE en revanche : les cycles à DÉPART différent (même proches), et les
+    variantes qui gagnent au moins une dimension (ex. un peu moins rentable mais
+    100 % de réussite). Les combinaisons ne sont jamais fusionnées.
+    `cands` doit être trié par rendement décroissant (le meilleur est vu en 1er)."""
+    def _start_key(c):
+        if len(c.cycles) != 1:
+            return ("combo", id(c))              # une combinaison n'est jamais fusionnée
+        a = getattr(c.cycles[0], "asym", None)
+        # même creux de départ (à ~30 barres près) ; les symétriques partagent la
+        # même « origine » (toute la fenêtre) → même groupe.
+        return ("anc", round(int(a[2]) / 30.0)) if a else ("sym",)
+
+    def _dominates(k, c):
+        return (k.total_return_pct >= c.total_return_pct
+                and k.hit_rate >= c.hit_rate
+                and -k.bearish_total_return_pct >= -c.bearish_total_return_pct
+                and k.bearish_hit_rate >= c.bearish_hit_rate)
+
+    kept: List[CombinationResult] = []
+    for c in cands:
+        sk = _start_key(c)
+        redundant = any(
+            _start_key(k) == sk
+            and _combos_too_similar(c.periods, k.periods)
+            and _dominates(k, c)
+            for k in kept)
+        if not redundant:
+            kept.append(c)
+    return kept
+
+
+
 def _recap_table_html(combos: List[CombinationResult],
                       title: str = "Récapitulatif des combinaisons",
                       charted: dict = None, anchor_id: str = None,
@@ -456,6 +494,10 @@ def generate_report(
     _seen_sig, _recap_top = set(), []
     _by_return = sorted(list(combinations.get(1, [])) + sec2 + sec3 + secCourt,
                         key=lambda r: r.total_return_pct, reverse=True)
+    # Retire les quasi-doublons DOMINÉS d'un même départ (ex. 105 j et 106 j partant
+    # du même creux, le 106 j étant battu sur tout) — mais garde les départs
+    # différents et les variantes qui gagnent au moins une dimension.
+    _by_return = _prune_dominated_singles(_by_return)
     for c in _by_return:
         s = _sig(c)
         if s in _seen_sig:
