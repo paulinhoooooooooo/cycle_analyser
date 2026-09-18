@@ -867,7 +867,13 @@ def analyze_combinations(
         # (_all_passing est déjà trié par rendement décroissant, _best_variants
         # conserve cet ordre → [:_FILTER_MAX] = les 5 meilleures.)
         _FILTER_MAX = 5
-        results[1] = _best_variants(_all_passing(singles_long, _qual, _hit_gate_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
+        # results[1] (cycles SIMPLES) : on garde TOUTES les périodes distinctes qui
+        # passent le filtre (une variante par période via _all_passing), SANS la
+        # fusion agressive de _best_variants — qui collait par ex. le 117 j (pourtant
+        # 100 %/100 %) dans le 105 j. C'est le récap (report_generator) qui fait la
+        # sélection/fusion fine (règle des 10 % rapportée au meilleur cycle). Les
+        # paires/triples gardent, elles, le plafond des 5 meilleures.
+        results[1] = _all_passing(singles_long, _qual, _hit_gate_l)[:40]
         results[2] = _best_variants(_all_passing(pairs, _qual, _hit_gate_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
         results[3] = _best_variants(_all_passing(triples, _qual, _hit_gate_l), _ret_l, _hit_l, _zon_l)[:_FILTER_MAX]
         # En mode ancré : garantir aussi les meilleurs combos CLASSIQUES qui passent.
