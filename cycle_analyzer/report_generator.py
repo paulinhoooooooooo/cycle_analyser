@@ -284,14 +284,14 @@ def _prune_dominated_singles(cands: List[CombinationResult]) -> List[Combination
                 and k.bearish_hit_rate >= c.bearish_hit_rate)
 
     def _close(c, k):
-        # « proches » = MOINS de 10 % d'écart, rapporté au PLUS GRAND des deux.
-        # On compare les JOURS AFFICHÉS (via _d), pas les barres internes : sinon
-        # l'arrondi barres→jours fausse le résultat à la limite (ex. 105 j / 117 j
-        # = 73 / 81 barres, « proches » en barres mais PAS en jours).
-        # Ex. 120 j vs 112 j : écart 8 < 12 (10 % de 120) → proches ;
-        #     117 j vs 105 j : écart 12 > 11,7 (10 % de 117) → PAS proches.
+        # « proches » = MOINS de 10 % d'écart, rapporté au MEILLEUR des deux — ici k,
+        # déjà gardé (vu en premier car mieux classé) et qui pourrait supprimer c.
+        # On mesure en JOURS AFFICHÉS (via _d), pas en barres internes, sinon
+        # l'arrondi barres→jours fausse le résultat à la limite.
+        # Ex. le meilleur est 105 j : 117 j (écart 12 > 10,5 = 10 % de 105) → PAS
+        #     proches, les deux restent ; 106 j (écart 1 < 10,5) → proches.
         pc, pk = _d(c.cycles[0].period), _d(k.cycles[0].period)
-        return abs(pc - pk) < 0.10 * max(pc, pk)
+        return pk > 0 and abs(pc - pk) < 0.10 * pk
 
     kept: List[CombinationResult] = []
     for c in cands:
