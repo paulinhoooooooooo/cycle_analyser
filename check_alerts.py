@@ -29,6 +29,7 @@ from cycle_analyzer.cycle_detector import CycleInfo, _detrend_log, _fit_sine, _p
 from cycle_freeze import load_frozen
 import cycle_locks as _cl
 import backtest_live as _bl
+import cycle_ledger as _led
 
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
@@ -112,6 +113,19 @@ def _parse_ddmmyyyy(s: str) -> Optional[date]:
         return None
 
 
+def _record_event(events_out, kind: str, debut_str: str, fin_str: str, ret) -> None:
+    """Ajoute un cycle TERMINÉ annoncé (début → fin + rendement) à la liste
+    d'événements, dates converties en ISO pour le journal cycle_ledger.json."""
+    if events_out is None:
+        return
+    d = _parse_ddmmyyyy(debut_str)
+    f = _parse_ddmmyyyy(fin_str)
+    if not d or not f:
+        return
+    events_out.append({"kind": kind, "debut": d.isoformat(),
+                       "fin": f.isoformat(), "ret": float(ret)})
+
+
 def _countdown_days(event: date, today: date) -> int:
     """Nombre de JOURS CALENDAIRES d'aujourd'hui jusqu'à l'événement.
     Compté en calendaire (et non en barres de trading) pour que le compte à
@@ -171,6 +185,7 @@ def check_ticker(
     locked_start: str = None,
     locked_end: str = None,
     today: Optional[date] = None,
+    events_out: Optional[List[dict]] = None,
 ) -> Tuple[List[str], Optional[str]]:
     """Retourne (messages, date_des_données) pour ce ticker.
     ``stats`` : ligne de backtest optionnelle (rendement/zones/réussite) ajoutée
@@ -243,6 +258,7 @@ def check_ticker(
                     f"🏁 Sommet du cycle : <b>{end_ev_str}</b>\n"
                     f"📅 Données au {last_date}"
                 )
+                _record_event(events_out, "HAUSSIER", cyc_start, end_ev_str, ret)
 
         if want_short and not bear_before and bear_after:
             start_str = locked_start or date_of(t_today + bars).strftime("%d/%m/%Y")
@@ -275,6 +291,7 @@ def check_ticker(
                     f"🏁 Creux du cycle : <b>{end_ev_str}</b>\n"
                     f"📅 Données au {last_date}"
                 )
+                _record_event(events_out, "BAISSIER", cyc_start, end_ev_str, ret)
 
     # La ligne de backtest (stats) est ajoutée par main() APRÈS coup : elle peut
     # être recalculée en direct si un cycle vient de se terminer (voir
@@ -376,6 +393,7 @@ def main() -> None:
     alerts_list = config.get("alerts", [])
     _locks = _cl.load()   # verrous J-15 (lecture seule)
     _state = _load_alert_state()   # anti-doublon (dernier JOUR déjà notifié / combinaison)
+    _ledger = _led.load()          # journal des cycles annoncés (pour /historique)
     _today = date.today()
     _today_iso = _today.isoformat()
 
@@ -408,12 +426,23 @@ def main() -> None:
 
         _k = _cl.key_of(ticker, str(entry["cycles"]), direction)
         print(f"  {ticker} ({' + '.join(str(p) for p in periods)}b)… ", end="", flush=True)
+        _events: List[dict] = []
         messages, data_date = check_ticker(ticker, periods, period, interval, lookahead,
                                 start=start, rank_tag=rank_tag, direction=direction,
                                 fige=fige,
                                 locked_start=_cl.locked_start(_locks, _k),
                                 locked_end=_cl.locked_end(_locks, _k),
-                                today=_today)
+                                today=_today,
+                                events_out=_events)
+
+        # Journal des cycles annoncés : on note le suivi et on enregistre les
+        # cycles TERMINÉS annoncés (début → fin + rendement). Un cycle dont le
+        # début est antérieur au 1er suivi de la combinaison est ignoré.
+        _lk = _led.key_of(ticker, str(entry["cycles"]), direction)
+        _led.note_seen(_ledger, _lk, _today_iso)
+        for _ev in _events:
+            _led.record_finished(_ledger, _lk, _ev["kind"],
+                                 _ev["debut"], _ev["fin"], _ev["ret"], _today_iso)
 
         if messages:
             # Anti-doublon : au plus UNE notification par jour et par combinaison.
@@ -440,6 +469,7 @@ def main() -> None:
             print("aucune alerte aujourd'hui")
 
     _save_alert_state(_state)
+    _led.save(_ledger)
     print(f"\nTerminé — {total_sent} alerte(s) au total.")
 
 

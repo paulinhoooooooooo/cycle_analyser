@@ -4,6 +4,7 @@ Bot Telegram interactif — Cycles de marché
 
 Fonctions :
   • Répond à /prochains (ou tout message) avec les prochains événements cycliques
+  • Répond à /historique avec l'historique des cycles passés (début, fin, rendement)
   • Envoie automatiquement une alerte quotidienne (07h30 UTC) quand un événement
     cyclique tombe dans la fenêtre lookaheadBars définie dans watchlist.yml
 
@@ -33,6 +34,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from cycle_analyzer.data_fetcher import fetch_data, get_close_prices, get_dates
 from cycle_analyzer.cycle_detector import CycleInfo, _detrend_log, _fit_sine, _phase_state
+
+import cycle_ledger
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
@@ -257,8 +260,69 @@ def get_imminent_events(
     return events
 
 
-# ── Déduplication des alertes ─────────────────────────────────────────────────
+# ── Historique des cycles passés (commande /historique) ───────────────────────
+# On NE recalcule PAS tout l'historique détecté : on rejoue UNIQUEMENT les cycles
+# déjà ANNONCÉS sur Telegram, enregistrés dans le journal cycle_ledger.json par
+# check_alerts.py (chaque cycle terminé annoncé : début → fin + rendement). Un
+# cycle antérieur au suivi Telegram n'y figure pas.
 
+def _iso_to_fr(iso: Optional[str]) -> str:
+    """'2026-05-01' → '01/05/2026'. Renvoie '?' si vide/non parsable."""
+    if not iso:
+        return "?"
+    try:
+        return _dt.date.fromisoformat(iso).strftime("%d/%m/%Y")
+    except Exception:
+        return iso
+
+
+def _ledger_line(c: dict) -> str:
+    kind = c.get("kind", "HAUSSIER")
+    icon = "🟢📈" if kind == "HAUSSIER" else "🔴📉"
+    sens = "haussier (long)" if kind == "HAUSSIER" else "baissier (short)"
+    ret = float(c.get("return_pct", 0.0))
+    sign = "+" if ret >= 0 else ""
+    d0 = _iso_to_fr(c.get("debut"))
+    d1 = _iso_to_fr(c.get("fin"))
+    return f"{icon} <b>{d0} → {d1}</b> : {sign}{ret:.1f}% <i>({sens})</i>"
+
+
+def build_history_report(config: dict) -> str:
+    alerts_list = config.get("alerts", [])
+    if not alerts_list:
+        return "Aucun ticker dans watchlist.yml."
+
+    ledger = cycle_ledger.load()
+    ranks = _ticker_ranks(alerts_list)
+    lines = ["<b>🕓 Historique des cycles annoncés</b>\n"]
+    any_cycle = False
+    for i, entry in enumerate(alerts_list):
+        ticker    = entry["ticker"].upper()
+        periods   = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
+        direction = entry.get("direction", "both")
+
+        periods_str = " + ".join(str(p) for p in periods)
+        rank, total = ranks[i]
+        dir_tag = {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
+        lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)}{dir_tag} (cycles {periods_str}b)")
+
+        key = cycle_ledger.key_of(ticker, entry["cycles"], direction)
+        cycles = cycle_ledger.past_cycles(ledger, key)      # plus récents d'abord
+        if not cycles:
+            lines.append("  ⚠ Aucun cycle annoncé pour l'instant.")
+        else:
+            any_cycle = True
+            for c in cycles:
+                lines.append(f"  {_ledger_line(c)}")
+        lines.append("")
+
+    if not any_cycle:
+        lines.append("<i>Le journal se remplit au fil des alertes : un cycle "
+                     "apparaît ici une fois sa FIN annoncée sur Telegram.</i>")
+    return "\n".join(lines).strip()
+
+
+# ── Déduplication des alertes ─────────────────────────────────────────────────
 def _load_sent() -> Set[Tuple]:
     if not _SENT_FILE.exists():
         return set()
@@ -369,6 +433,44 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await handle_prochains(update, context)
 
 
+# ── Commande /historique ──────────────────────────────────────────────────────
+
+async def _reply_chunks(update: Update, text: str) -> None:
+    """Envoie un message en le découpant si nécessaire (limite Telegram ~4096
+    caractères), sans jamais couper au milieu d'une ligne."""
+    LIMIT = 3500
+    buf = ""
+    for line in text.split("\n"):
+        if len(buf) + len(line) + 1 > LIMIT and buf:
+            await update.message.reply_text(buf, parse_mode="HTML")
+            buf = ""
+        buf += (line + "\n")
+    if buf.strip():
+        await update.message.reply_text(buf, parse_mode="HTML")
+
+
+async def handle_historique(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Mémorise le chat ID (comme /prochains) pour les envois proactifs.
+    _save_chat_id(str(update.effective_chat.id))
+    await update.message.reply_text("⏳ Calcul de l'historique des cycles…")
+    config_path = Path("watchlist.yml")
+    if not config_path.exists():
+        await update.message.reply_text("❌ watchlist.yml introuvable sur le serveur.")
+        return
+    try:
+        with config_path.open(encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+    except Exception as exc:
+        await update.message.reply_text(f"❌ Erreur YAML dans watchlist.yml : {exc}")
+        return
+    try:
+        report = build_history_report(config)
+    except Exception as exc:
+        await update.message.reply_text(f"❌ Erreur lors du calcul : {exc}")
+        return
+    await _reply_chunks(update, report)
+
+
 # ── Alertes proactives quotidiennes ───────────────────────────────────────────
 
 async def check_and_send_alerts(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -467,6 +569,8 @@ def main() -> None:
     # Commandes interactives
     app.add_handler(CommandHandler("prochains", handle_prochains))
     app.add_handler(CommandHandler("start",     handle_prochains))
+    app.add_handler(CommandHandler("historique", handle_historique))
+    app.add_handler(CommandHandler("history",    handle_historique))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # Job quotidien d'alerte proactive — 19h00 UTC (21h00 Paris été / 20h00 hiver).
@@ -482,7 +586,8 @@ def main() -> None:
             time=_dt.time(19, 0, 0, tzinfo=_dt.timezone.utc),
         )
 
-    print("Bot démarré. Envoyez /prochains dans Telegram pour voir les cycles.")
+    print("Bot démarré. Envoyez /prochains (prochains événements) ou /historique "
+          "(cycles passés) dans Telegram.")
     app.run_polling(drop_pending_updates=True)
 
 
