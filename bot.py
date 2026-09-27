@@ -35,6 +35,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from cycle_analyzer.data_fetcher import fetch_data, get_close_prices, get_dates
 from cycle_analyzer.cycle_detector import CycleInfo, _detrend_log, _fit_sine, _phase_state
 
+import cycle_ledger
+
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
@@ -368,102 +370,45 @@ def build_future_report(config: dict) -> str:
     return "\n".join(lines).strip()
 
 
-# ── Historique des cycles passés (commande /historique) ───────────────────────
-# On NE recalcule PAS tout l'historique détecté : on rejoue UNIQUEMENT les cycles
 # ── Historique des cycles passés (workflow « historique ») ────────────────────
-# Calcule les VRAIS cycles passés depuis les données (zones d'alignement révolues,
-# avec début / fin / rendement). Un paramètre « depuis » (date) permet d'exclure
-# les cycles trop anciens — au choix de l'utilisateur.
+# On NE recalcule PAS tout l'historique détecté : on rejoue UNIQUEMENT les cycles
+# déjà ENREGISTRÉS (annoncés sur Telegram), stockés dans le journal
+# cycle_ledger.json par check_alerts.py (chaque cycle terminé annoncé : début →
+# fin + rendement). Un cycle antérieur au suivi Telegram n'y figure pas.
 
-class PastCycle(NamedTuple):
-    ticker: str
-    periods_str: str
-    kind: str                 # HAUSSIER | BAISSIER
-    debut: date
-    fin: date
-    return_pct: float
-
-
-def _to_date(x) -> date:
-    return x.date() if hasattr(x, "date") else x
-
-
-def get_past_cycles_for_ticker(
-    ticker: str,
-    periods: List[int],
-    period: str,
-    interval: str,
-    start: Optional[str] = None,
-    direction: str = "both",
-    since: Optional[date] = None,
-    max_cycles: int = 40,
-) -> List[PastCycle]:
-    """Vrais cycles PASSÉS d'un ticker : chaque zone d'alignement révolue
-    (début → fin + rendement). `since` (optionnel) ne garde que les cycles dont le
-    début est postérieur ou égal à cette date."""
+def _iso_to_fr(iso: Optional[str]) -> str:
+    """'2026-05-01' → '01/05/2026'. Renvoie '?' si vide/non parsable."""
+    if not iso:
+        return "?"
     try:
-        data = fetch_data(ticker, period=period, interval=interval, start=start)
-    except Exception as exc:
-        print(f"  ⚠ Erreur fetch {ticker} : {exc}")
-        return []
-
-    prices    = get_close_prices(data)
-    dates_idx = get_dates(data)
-    cycles, _t_last, _last = _build_cycles_from_data(prices, dates_idx, periods)
-    periods_str = " + ".join(str(p) for p in periods)
-    N = len(prices)
-
-    out: List[PastCycle] = []
-    for kind, idx in _dir_kinds(direction):
-        t = 1
-        while t < N:
-            if not _state_at(cycles, float(t))[idx]:
-                t += 1
-                continue
-            s = t
-            while t < N and _state_at(cycles, float(t))[idx]:
-                t += 1
-            e = t - 1
-            if e <= s:
-                continue                          # zone d'une seule barre : ignorée
-            p0, p1 = float(prices[s]), float(prices[e])
-            if p0 <= 0:
-                continue
-            chg = (p1 / p0 - 1.0) * 100.0
-            ret = chg if kind == "HAUSSIER" else -chg   # short : gain quand ça baisse
-            d0, d1 = _to_date(dates_idx[s]), _to_date(dates_idx[e])
-            if since and d0 < since:
-                continue                          # cycle antérieur à « depuis » → exclu
-            out.append(PastCycle(ticker, periods_str, kind, d0, d1, ret))
-    out.sort(key=lambda c: c.debut, reverse=True)     # plus récents d'abord
-    return out[:max_cycles]
+        return _dt.date.fromisoformat(iso).strftime("%d/%m/%Y")
+    except Exception:
+        return iso
 
 
-def _past_line(c: PastCycle) -> str:
-    icon = "🟢📈" if c.kind == "HAUSSIER" else "🔴📉"
-    sens = "haussier (long)" if c.kind == "HAUSSIER" else "baissier (short)"
-    sign = "+" if c.return_pct >= 0 else ""
-    d0 = c.debut.strftime("%d/%m/%Y")
-    d1 = c.fin.strftime("%d/%m/%Y")
-    return f"{icon} <b>{d0} → {d1}</b> : {sign}{c.return_pct:.1f}% <i>({sens})</i>"
+def _ledger_line(c: dict) -> str:
+    kind = c.get("kind", "HAUSSIER")
+    icon = "🟢📈" if kind == "HAUSSIER" else "🔴📉"
+    sens = "haussier (long)" if kind == "HAUSSIER" else "baissier (short)"
+    ret = float(c.get("return_pct", 0.0))
+    sign = "+" if ret >= 0 else ""
+    d0 = _iso_to_fr(c.get("debut"))
+    d1 = _iso_to_fr(c.get("fin"))
+    return f"{icon} <b>{d0} → {d1}</b> : {sign}{ret:.1f}% <i>({sens})</i>"
 
 
-def build_history_report(config: dict, since: Optional[date] = None) -> str:
+def build_history_report(config: dict) -> str:
     alerts_list = config.get("alerts", [])
     if not alerts_list:
         return "Aucun ticker dans watchlist.yml."
 
+    ledger = cycle_ledger.load()
     ranks = _ticker_ranks(alerts_list)
-    titre = "<b>🕓 Historique des cycles passés</b>"
-    if since:
-        titre += f" <i>(depuis le {since.strftime('%d/%m/%Y')})</i>"
-    lines = [titre + "\n"]
+    lines = ["<b>🕓 Historique des cycles enregistrés (annoncés sur Telegram)</b>\n"]
+    any_cycle = False
     for i, entry in enumerate(alerts_list):
         ticker    = entry["ticker"].upper()
         periods   = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
-        period    = entry.get("period", "5y")
-        interval  = entry.get("interval", "1d")
-        start     = entry.get("start")
         direction = entry.get("direction", "both")
 
         periods_str = " + ".join(str(p) for p in periods)
@@ -471,15 +416,19 @@ def build_history_report(config: dict, since: Optional[date] = None) -> str:
         dir_tag = {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
         lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)}{dir_tag} (cycles {periods_str}b)")
 
-        past = get_past_cycles_for_ticker(ticker, periods, period, interval,
-                                          start=start, direction=direction, since=since)
-        if not past:
-            lines.append("  ⚠ Aucun cycle passé sur la période.")
+        key = cycle_ledger.key_of(ticker, entry["cycles"], direction)
+        cycles = cycle_ledger.past_cycles(ledger, key)      # plus récents d'abord
+        if not cycles:
+            lines.append("  ⚠ Aucun cycle enregistré pour l'instant.")
         else:
-            for c in past:
-                lines.append(f"  {_past_line(c)}")
+            any_cycle = True
+            for c in cycles:
+                lines.append(f"  {_ledger_line(c)}")
         lines.append("")
 
+    if not any_cycle:
+        lines.append("<i>Seuls les cycles ENREGISTRÉS apparaissent : un cycle est "
+                     "ajouté ici une fois sa FIN annoncée sur Telegram.</i>")
     return "\n".join(lines).strip()
 
 

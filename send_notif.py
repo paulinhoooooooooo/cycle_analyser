@@ -12,7 +12,6 @@ alertes). Sans secrets → mode DRY RUN (affiche le message dans les logs).
 """
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -22,33 +21,20 @@ import yaml
 from check_alerts import send_telegram
 from bot import build_future_report, build_history_report, build_report
 
-MODE = (os.environ.get("MODE") or "futurs").strip().lower()
-
-
-def _parse_depuis(s: str):
-    """Date « depuis » (JJ/MM/AAAA ou AAAA-MM-JJ), ou None si vide/non parsable."""
-    s = (s or "").strip()
-    if not s:
-        return None
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(s, fmt).date()
-        except ValueError:
-            continue
-    print(f"⚠ Date « depuis » non reconnue : {s!r} — ignorée.")
-    return None
-
+MODE = (os.environ.get("MODE") or "historique").strip().lower()
 
 with open("watchlist.yml", encoding="utf-8") as f:
     config = yaml.safe_load(f)
 
 if MODE == "historique":
-    message = build_history_report(config, since=_parse_depuis(os.environ.get("DEPUIS", "")))
+    message = build_history_report(config)      # UNIQUEMENT les cycles enregistrés
 elif MODE == "prochains":
     message = build_report(config)
-else:
-    MODE = "futurs"
+elif MODE == "futurs":
     message = build_future_report(config)
+else:
+    MODE = "historique"
+    message = build_history_report(config)
 
 
 def _chunks(text: str, limit: int = 3500):
