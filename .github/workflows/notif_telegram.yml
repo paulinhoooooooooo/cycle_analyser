@@ -1,0 +1,35 @@
+name: Notif Telegram
+
+# Notification Telegram À LA DEMANDE (pas besoin de serveur qui tourne).
+# Va dans l'onglet « Actions » → « Notif Telegram » → « Run workflow », choisis
+# le type, et le message part sur Telegram.
+on:
+  workflow_dispatch:
+    inputs:
+      type:
+        description: "Que recevoir sur Telegram ?"
+        required: true
+        default: "futurs"
+        type: choice
+        options:
+          - futurs        # tous les futurs cycles (début / fin estimés)
+          - historique    # cycles passés déjà annoncés (journal)
+          - prochains     # prochains événements (comme /prochains)
+
+jobs:
+  notif:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Envoyer la notification Telegram
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MODE: ${{ inputs.type }}
+        run: python send_notif.py

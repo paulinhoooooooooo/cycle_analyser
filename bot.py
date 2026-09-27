@@ -260,6 +260,116 @@ def get_imminent_events(
     return events
 
 
+# ── Tous les futurs cycles (workflow « Futurs cycles ») ───────────────────────
+# Liste, par ticker, TOUS les cycles À VENIR (zones d'alignement futures) avec
+# leur début et leur fin ESTIMÉS — pas seulement le prochain événement.
+
+class FutureCycle(NamedTuple):
+    ticker: str
+    periods_str: str
+    kind: str                 # HAUSSIER | BAISSIER
+    debut: date
+    fin: Optional[date]       # None si la fin dépasse l'horizon
+
+
+def _dir_kinds(direction: str):
+    """(nom, index) des sens à lister : long → haussier, short → baissier,
+    both → les deux. L'index 0/1 correspond à _state_at (bull, bear)."""
+    d = (direction or "both").lower()
+    if d == "long":
+        return [("HAUSSIER", 0)]
+    if d == "short":
+        return [("BAISSIER", 1)]
+    return [("HAUSSIER", 0), ("BAISSIER", 1)]
+
+
+def get_future_cycles_for_ticker(
+    ticker: str,
+    periods: List[int],
+    period: str,
+    interval: str,
+    start: Optional[str] = None,
+    direction: str = "both",
+    max_cycles: int = 8,
+) -> List[FutureCycle]:
+    """Tous les cycles À VENIR d'un ticker : chaque future zone d'alignement
+    (début → fin estimés), jusqu'à `max_cycles` par sens, dans un horizon adapté
+    à la longueur des cycles."""
+    try:
+        data = fetch_data(ticker, period=period, interval=interval, start=start)
+    except Exception as exc:
+        print(f"  ⚠ Erreur fetch {ticker} : {exc}")
+        return []
+
+    prices    = get_close_prices(data)
+    dates_idx = get_dates(data)
+    cycles, t_last, _last = _build_cycles_from_data(prices, dates_idx, periods)
+    periods_str = " + ".join(str(p) for p in periods)
+    horizon = min(2000, max(600, 4 * max(periods)))    # assez pour plusieurs cycles
+
+    out: List[FutureCycle] = []
+    for kind, idx in _dir_kinds(direction):
+        count = 0
+        open_debut: Optional[date] = None
+        for k in range(1, horizon + 1):
+            before = _state_at(cycles, t_last + k - 1)[idx]
+            after  = _state_at(cycles, t_last + k)[idx]
+            bar = max(1, k - 1)                          # le pic/creux est à la barre k-1
+            if after and not before:                     # début d'une future zone
+                open_debut = _est_future_date(dates_idx, bar)
+            elif before and not after and open_debut is not None:
+                out.append(FutureCycle(ticker, periods_str, kind,
+                                       open_debut, _est_future_date(dates_idx, bar)))
+                open_debut = None
+                count += 1
+                if count >= max_cycles:
+                    break
+        if open_debut is not None and count < max_cycles:  # dernière zone sans fin visible
+            out.append(FutureCycle(ticker, periods_str, kind, open_debut, None))
+    out.sort(key=lambda c: c.debut)
+    return out
+
+
+def _future_line(c: FutureCycle) -> str:
+    icon = "🟢📈" if c.kind == "HAUSSIER" else "🔴📉"
+    sens = "haussier (long)" if c.kind == "HAUSSIER" else "baissier (short)"
+    d0 = c.debut.strftime("%d/%m/%Y")
+    d1 = c.fin.strftime("%d/%m/%Y") if c.fin else "au-delà de l'horizon"
+    return f"{icon} <b>{d0} → {d1}</b> <i>({sens})</i>"
+
+
+def build_future_report(config: dict) -> str:
+    alerts_list = config.get("alerts", [])
+    if not alerts_list:
+        return "Aucun ticker dans watchlist.yml."
+
+    ranks = _ticker_ranks(alerts_list)
+    lines = ["<b>🔮 Tous les futurs cycles (dates estimées)</b>\n"]
+    for i, entry in enumerate(alerts_list):
+        ticker    = entry["ticker"].upper()
+        periods   = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
+        period    = entry.get("period", "5y")
+        interval  = entry.get("interval", "1d")
+        start     = entry.get("start")
+        direction = entry.get("direction", "both")
+
+        periods_str = " + ".join(str(p) for p in periods)
+        rank, total = ranks[i]
+        dir_tag = {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
+        lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)}{dir_tag} (cycles {periods_str}b)")
+
+        fut = get_future_cycles_for_ticker(ticker, periods, period, interval,
+                                           start=start, direction=direction)
+        if not fut:
+            lines.append("  ⚠ Aucun futur cycle détecté dans l'horizon.")
+        else:
+            for c in fut:
+                lines.append(f"  {_future_line(c)}")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
 # ── Historique des cycles passés (commande /historique) ───────────────────────
 # On NE recalcule PAS tout l'historique détecté : on rejoue UNIQUEMENT les cycles
 # déjà ANNONCÉS sur Telegram, enregistrés dans le journal cycle_ledger.json par
