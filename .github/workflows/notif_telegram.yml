@@ -9,12 +9,17 @@ on:
       type:
         description: "Que recevoir sur Telegram ?"
         required: true
-        default: "futurs"
+        default: "historique"
         type: choice
         options:
           - futurs        # tous les futurs cycles (début / fin estimés)
-          - historique    # cycles passés déjà annoncés (journal)
+          - historique    # tous les cycles passés (début / fin / rendement)
           - prochains     # prochains événements (comme /prochains)
+      depuis:
+        description: "Historique : n'afficher que les cycles depuis cette date (JJ/MM/AAAA, vide = tout)"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   notif:
@@ -32,4 +37,5 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           MODE: ${{ inputs.type }}
+          DEPUIS: ${{ inputs.depuis }}
         run: python send_notif.py
