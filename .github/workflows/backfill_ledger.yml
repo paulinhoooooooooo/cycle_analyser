@@ -1,0 +1,43 @@
+name: Backfill journal
+
+# Pré-remplit le journal des cycles (cycle_ledger.json) avec les cycles DÉJÀ
+# TERMINÉS depuis une date de suivi, pour que /historique les montre tout de
+# suite. À lancer une fois. Ensuite le workflow d'alertes enrichit le journal.
+on:
+  workflow_dispatch:
+    inputs:
+      depuis:
+        description: "Enregistrer les cycles terminés depuis cette date (JJ/MM/AAAA)"
+        required: true
+        default: "01/01/2026"
+        type: string
+
+permissions:
+  contents: write   # pour commiter cycle_ledger.json
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Pré-remplir le journal
+        env:
+          DEPUIS: ${{ inputs.depuis }}
+        run: python backfill_ledger.py
+      - name: Commiter le journal si modifié
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cycle_ledger.json
+          if git diff --cached --quiet; then
+            echo "Journal inchangé."
+          else
+            git commit -m "Pré-remplissage du journal des cycles terminés [skip ci]"
+            git push
+          fi

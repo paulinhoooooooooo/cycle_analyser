@@ -404,31 +404,30 @@ def build_history_report(config: dict) -> str:
 
     ledger = cycle_ledger.load()
     ranks = _ticker_ranks(alerts_list)
-    lines = ["<b>🕓 Historique des cycles enregistrés (annoncés sur Telegram)</b>\n"]
+    lines = ["<b>🕓 Historique des cycles enregistrés (terminés)</b>\n"]
     any_cycle = False
     for i, entry in enumerate(alerts_list):
         ticker    = entry["ticker"].upper()
         periods   = [int(p.strip()) for p in str(entry["cycles"]).split(",")]
         direction = entry.get("direction", "both")
 
+        key = cycle_ledger.key_of(ticker, entry["cycles"], direction)
+        cycles = cycle_ledger.past_cycles(ledger, key)      # plus récents d'abord
+        if not cycles:
+            continue                                        # aucun cycle terminé → on saute
+
+        any_cycle = True
         periods_str = " + ".join(str(p) for p in periods)
         rank, total = ranks[i]
         dir_tag = {"long": " ↑ LONG", "short": " ↓ SHORT"}.get((direction or "both").lower(), "")
         lines.append(f"<b>{ticker}</b>{_rank_tag(rank, total)}{dir_tag} (cycles {periods_str}b)")
-
-        key = cycle_ledger.key_of(ticker, entry["cycles"], direction)
-        cycles = cycle_ledger.past_cycles(ledger, key)      # plus récents d'abord
-        if not cycles:
-            lines.append("  ⚠ Aucun cycle enregistré pour l'instant.")
-        else:
-            any_cycle = True
-            for c in cycles:
-                lines.append(f"  {_ledger_line(c)}")
+        for c in cycles:
+            lines.append(f"  {_ledger_line(c)}")
         lines.append("")
 
     if not any_cycle:
-        lines.append("<i>Seuls les cycles ENREGISTRÉS apparaissent : un cycle est "
-                     "ajouté ici une fois sa FIN annoncée sur Telegram.</i>")
+        return ("🕓 <b>Historique des cycles enregistrés</b>\n\n"
+                "<i>Aucun cycle terminé enregistré pour l'instant.</i>")
     return "\n".join(lines).strip()
 
 

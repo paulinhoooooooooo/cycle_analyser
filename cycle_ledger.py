@@ -73,15 +73,16 @@ def record_finished(ledger: dict, key: str, kind: str,
                     debut_iso: str, fin_iso: str, return_pct: float,
                     today_iso: str) -> bool:
     """Enregistre (ou actualise) un cycle TERMINÉ annoncé : début → fin + rendement.
-    Ignore les cycles dont le début est ANTÉRIEUR au suivi Telegram. Retourne True
-    si un cycle a été ajouté/mis à jour."""
+    Un cycle est gardé dès que sa FIN est postérieure au début du suivi (même si
+    son début, lui, est antérieur) — ex. AEM démarré avant le suivi mais terminé
+    pendant. Retourne True si un cycle a été ajouté/mis à jour."""
     if not debut_iso or not fin_iso:
         return False
     e = _entry(ledger, key)
     if not e.get("since"):
         e["since"] = today_iso
-    if debut_iso < e["since"]:
-        return False                          # cycle antérieur au suivi → ignoré
+    if fin_iso < e["since"]:
+        return False                          # cycle terminé AVANT le suivi → ignoré
     for c in e["cycles"]:                      # déjà présent → on rafraîchit
         if c["kind"] == kind and c["debut"] == debut_iso:
             c["fin"] = fin_iso
