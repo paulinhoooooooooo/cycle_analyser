@@ -338,6 +338,13 @@
         "kind": "HAUSSIER",
         "return_pct": -3.0,
         "shown": "2026-09-30"
+      },
+      {
+        "debut": "2026-09-22",
+        "fin": "2026-10-12",
+        "kind": "HAUSSIER",
+        "return_pct": -5.2,
+        "shown": "2026-10-09"
       }
     ],
     "since": "2026-01-01"
