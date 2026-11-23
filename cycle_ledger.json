@@ -131,7 +131,15 @@
     "since": "2026-01-01"
   },
   "DRO.AX|375,307,69|long": {
-    "cycles": [],
+    "cycles": [
+      {
+        "debut": "2026-10-09",
+        "fin": "2026-11-26",
+        "kind": "HAUSSIER",
+        "return_pct": -31.6,
+        "shown": "2026-11-23"
+      }
+    ],
     "since": "2026-01-01"
   },
   "DRO.AX|375,308|long": {
